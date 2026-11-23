@@ -4959,6 +4959,8 @@ void ScoreView::cmdAddText(Tid tid, Tid customTid, PropertyFlags pf, Placement p
             changeState(ViewState::NORMAL);
 
       TextBase* s = 0;
+      bool editExistingText = false;
+      bool selectRehearsalText = false;
       _score->startCmd();
       if (tid == Tid::STAFF && customTid == Tid::EXPRESSION)
             tid = customTid;  // expression is not first class element, but treat as such
@@ -4982,30 +4984,69 @@ void ScoreView::cmdAddText(Tid tid, Tid customTid, PropertyFlags pf, Placement p
                   break;
 
             case Tid::REHEARSAL_MARK:
-                  {
-                  ChordRest* cr = _score->getSelectedChordRest();
-                  if (!cr)
-                        break;
-                  s = new RehearsalMark(_score);
-                  cr->undoAddAnnotation(s);
-                  }
-                  break;
             case Tid::STAFF:
                   {
-                  ChordRest* cr = _score->getSelectedChordRest();
-                  if (!cr)
-                        break;
-                  s = new StaffText(_score, Tid::STAFF);
+                  const bool rehearsal = tid == Tid::REHEARSAL_MARK;
+                  const Selection& selection = _score->selection();
+                  ChordRest* cr = nullptr;
+                  Segment* segment = nullptr;
+                  int staffIdx = -1;
+                  if (selection.isRange()) {
+                        Segment* start = selection.startSegment();
+                        if (!start)
+                              break;
+                        staffIdx = selection.staffStart();
+                        Measure* measure = start->measure();
+                        if (measure->isMMRest())
+                              measure = measure->mmRestFirst();
+                        const Tid textStyle = customTid == Tid::DEFAULT ? tid : customTid;
+                        for (Segment* atStart = measure->first(); atStart && atStart->rtick().isZero(); atStart = atStart->next()) {
+                              if (!atStart->enabled())
+                                    continue;
+                              for (Element* annotation : atStart->annotations()) {
+                                    if (rehearsal ? annotation->isRehearsalMark()
+                                                  : (annotation->isStaffText() && annotation->staffIdx() == staffIdx
+                                                     && toTextBase(annotation)->tid() == textStyle)) {
+                                          s = toTextBase(annotation);
+                                          break;
+                                          }
+                                    }
+                              if (s)
+                                    break;
+                              }
+                        if (s) {
+                              editExistingText = true;
+                              break;
+                              }
+                        segment = measure->undoGetSegmentR(SegmentType::ChordRest, Fraction(0, 1));
+                        }
+                  else {
+                        cr = _score->getSelectedChordRest();
+                        if (!cr)
+                              break;
+                        }
+
+                  s = rehearsal ? static_cast<TextBase*>(new RehearsalMark(_score)) : new StaffText(_score, Tid::STAFF);
                   // if the previous text is UNSTYLED or NOSTYLE
                   // and the next text is created using text tab command
                   // (only those created in this way can make pf not STYLED, see definition of ScoreView::textTab())
                   // it inherits the same PropertyFlags and Placement
                   // making it much easier to put all texts above/below staves
-                  if (pf != PropertyFlags::STYLED) {
+                  if (!rehearsal && pf != PropertyFlags::STYLED) {
                         s->setPlacement(p);
                         s->setPropertyFlags(Pid::PLACEMENT, pf);
                         }
-                  cr->undoAddAnnotation(s);
+                  if (cr)
+                        cr->undoAddAnnotation(s);
+                  else {
+                        s->setParent(segment);
+                        s->setTrack(rehearsal ? 0 : staffIdx * VOICES);
+                        if (rehearsal) {
+                              s->setXmlText(_score->createRehearsalMarkText(toRehearsalMark(s)));
+                              selectRehearsalText = true;
+                              }
+                        _score->undoAddElement(s);
+                        }
                   }
                   break;
             case Tid::SYSTEM:
@@ -5077,7 +5118,7 @@ void ScoreView::cmdAddText(Tid tid, Tid customTid, PropertyFlags pf, Placement p
             }
 
       if (s) {
-            if (customTid != Tid::DEFAULT && customTid != tid)
+            if (!editExistingText && customTid != Tid::DEFAULT && customTid != tid)
                   s->initTid(customTid);
             _score->select(s, SelectType::SINGLE, 0);
             _score->endCmd();
@@ -5094,6 +5135,8 @@ void ScoreView::cmdAddText(Tid tid, Tid customTid, PropertyFlags pf, Placement p
                   }
             adjustCanvasPosition(s, false);
             startEditMode(s);
+            if (selectRehearsalText && editData.element == s)
+                  s->selectAll(s->cursor(editData));
             }
       else
             _score->endCmd();
