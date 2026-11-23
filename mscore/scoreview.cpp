@@ -4894,11 +4894,21 @@ void ScoreView::cmdAddChordName(HarmonyType ht)
 
       int track = -1;
       Element* newParent = nullptr;
-      Element* el = _score->selection().element();
+      Measure* rangeMeasure = nullptr;
+      const Selection& selection = _score->selection();
+      Element* el = selection.element();
       if (el && el->isFretDiagram()) {
             FretDiagram* fd = toFretDiagram(el);
             track = fd->track();
             newParent = fd;
+            }
+      else if (selection.isRange()) {
+            if (!selection.startSegment())
+                  return;
+            rangeMeasure = selection.startSegment()->measure();
+            if (rangeMeasure->isMMRest())
+                  rangeMeasure = rangeMeasure->mmRestFirst();
+            track = selection.staffStart() * VOICES;
             }
       else {
             ChordRest* cr = _score->getSelectedChordRest();
@@ -4907,10 +4917,12 @@ void ScoreView::cmdAddChordName(HarmonyType ht)
                   newParent = toElement(cr->segment());
                   }
             }
-      if (track == -1 || !newParent)
+      if (track == -1 || (!newParent && !rangeMeasure))
             return;
 
       _score->startCmd();
+      if (rangeMeasure)
+            newParent = rangeMeasure->undoGetSegmentR(SegmentType::ChordRest, Fraction(0, 1));
       Harmony* harmony = new Harmony(_score);
       harmony->setTrack(track);
       harmony->setParent(newParent);
@@ -4918,6 +4930,18 @@ void ScoreView::cmdAddChordName(HarmonyType ht)
       _score->undoAddElement(harmony);
       _score->endCmd();
 
+      // Edit the displayed copy when the first measure is shown as a multi-measure rest.
+      if (rangeMeasure && _score->styleB(Sid::createMultiMeasureRests)) {
+            if (Measure* mmRest = rangeMeasure->mmRest()) {
+                  for (ScoreElement* linked : harmony->linkList()) {
+                        Harmony* copy = toHarmony(linked);
+                        if (copy->parent()->isSegment() && toSegment(copy->parent())->measure() == mmRest) {
+                              harmony = copy;
+                              break;
+                              }
+                        }
+                  }
+            }
       _score->select(harmony, SelectType::SINGLE, 0);
       startEditMode(harmony);
       _score->update();

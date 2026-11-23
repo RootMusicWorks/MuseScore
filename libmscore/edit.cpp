@@ -4797,6 +4797,7 @@ void Score::undoAddElement(Element* element)
 
       // For linked staves the length of staffList is always > 1 since the list contains the staff itself too!
       const bool linked = ostaff->staffList().length() > 1;
+      const bool harmonyOnFretDiagram = element->isHarmony() && element->parent()->isFretDiagram();
 
       for (Staff*& staff : ostaff->staffList()) {
             Score* score = staff->score();
@@ -4983,7 +4984,9 @@ void Score::undoAddElement(Element* element)
                         if (ne->isHarmony()) {
                               for (Element* segel : segment->annotations()) {
                                     if (segel && segel->isFretDiagram() && segel->track() == ntrack) {
-                                          segel->add(ne);
+                                          // Keep an existing diagram label when adding a standalone chord symbol.
+                                          if (harmonyOnFretDiagram || !toFretDiagram(segel)->harmony())
+                                                segel->add(ne);
                                           break;
                                           }
                                     }
