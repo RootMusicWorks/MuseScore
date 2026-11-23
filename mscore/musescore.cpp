@@ -5548,6 +5548,7 @@ QString MuseScore::getUtmParameters(QString medium) const
 void MuseScore::about()
       {
       AboutBoxDialog ab;
+      ab.setWindowTitle("MuseScore 3 Custom - RootMusicWorks");
       ab.show();
       ab.exec();
       }
