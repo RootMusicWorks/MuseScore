@@ -141,6 +141,7 @@ class Palette : public QWidget {
       void prevPaletteElement();
       void applyPaletteElement();
       static bool applyPaletteElement(Element* element, Qt::KeyboardModifiers modifiers = {});
+      static void setRepeatInsertionDefaults(Element*);
       PaletteCell* append(Element*, const QString& name, QString tag = QString(),
          qreal mag = 1.0);
       PaletteCell* add(int idx, Element*, const QString& name,

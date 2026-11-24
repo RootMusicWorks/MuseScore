@@ -12,6 +12,7 @@
 
 #include "musescore.h"
 #include "continuouspanel.h"
+#include "palette.h"
 #include "scoreview.h"
 #include "tourhandler.h"
 
@@ -431,6 +432,8 @@ void ScoreView::dropEvent(QDropEvent* event)
             bool applyUserOffset = false;
             bool triggerSpannerDropApplyTour = editData.dropElement->isSpanner();
             editData.dropElement->styleChanged();
+            if (event->mimeData()->hasFormat(PaletteCell::mimeDataFormat) || qobject_cast<Palette*>(event->source()))
+                  Palette::setRepeatInsertionDefaults(editData.dropElement);
             _score->startCmd();
             Q_ASSERT(editData.dropElement->score() == score());
             _score->addRefresh(editData.dropElement->canvasBoundingRect());

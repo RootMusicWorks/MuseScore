@@ -27,7 +27,9 @@
 #include "libmscore/icon.h"
 #include "libmscore/image.h"
 #include "libmscore/imageStore.h"
+#include "libmscore/jump.h"
 #include "libmscore/keysig.h"
+#include "libmscore/marker.h"
 #include "libmscore/measure.h"
 #include "libmscore/mscore.h"
 #include "libmscore/note.h"
@@ -511,6 +513,42 @@ void Palette::wheelEvent(QWheelEvent* ev)
       }
 
 //---------------------------------------------------------
+//   setRepeatInsertionDefaults
+//---------------------------------------------------------
+
+void Palette::setRepeatInsertionDefaults(Element* element)
+      {
+      qreal fontSize = 0.0;
+      if (element->isJump() && toJump(element)->jumpType() == Jump::Type::DS)
+            fontSize = 12.0;
+      else if (element->isMarker()) {
+            Marker* marker = toMarker(element);
+            switch (marker->markerType()) {
+                  case Marker::Type::SEGNO:
+                  case Marker::Type::CODA:
+                        fontSize = 20.0;
+                        break;
+                  case Marker::Type::TOCODA:
+                        // XML uses the same label for the text and symbol variants.
+                        if (!marker->xmlText().contains(QStringLiteral("<sym>"))
+                            && marker->plainText() == QStringLiteral("To Coda"))
+                              fontSize = 12.0;
+                        break;
+                  default:
+                        break;
+                  }
+            }
+      if (fontSize == 0.0)
+            return;
+
+      element->setProperty(Pid::FONT_SIZE, fontSize);
+      element->setPropertyFlags(Pid::FONT_SIZE, PropertyFlags::UNSTYLED);
+      element->setAutoplace(false);
+      element->setSizeIsSpatiumDependent(false);
+      element->setPropertyFlags(Pid::SIZE_SPATIUM_DEPENDENT, PropertyFlags::UNSTYLED);
+      }
+
+//---------------------------------------------------------
 //   applyDrop
 //---------------------------------------------------------
 
@@ -537,6 +575,7 @@ static void applyDrop(Score* score, ScoreView* viewer, Element* target, Element*
 
             dropData.dropElement->read(n);
             dropData.dropElement->styleChanged();   // update to local style
+            Palette::setRepeatInsertionDefaults(dropData.dropElement);
 
             Element* el = target->drop(dropData);
             if (el && el->isInstrumentChange()) {
