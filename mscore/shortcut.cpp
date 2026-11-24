@@ -2396,6 +2396,13 @@ Shortcut Shortcut::_sc[] = {
          },
       {
          MsWidget::SCORE_TAB,
+         STATE_NORMAL,
+         "rehearsalmark-preset",
+         QT_TRANSLATE_NOOP("action","Choose Rehearsal Mark..."),
+         QT_TRANSLATE_NOOP("action","Choose a rehearsal mark for the first selected measure")
+         },
+      {
+         MsWidget::SCORE_TAB,
          STATE_NORMAL | STATE_NOTE_ENTRY,
          "instrument-change-text",
          QT_TRANSLATE_NOOP("action","Instrument Change"),

@@ -2136,6 +2136,7 @@ MuseScore::MuseScore()
       menuAddText->addAction(getAction("expression-text"));
       menuAddText->addAction(getAction("chord-text"));
       menuAddText->addAction(getAction("rehearsalmark-text"));
+      menuAddText->addAction(getAction("rehearsalmark-preset"));
       menuAddText->addAction(getAction("instrument-change-text"));
       menuAddText->addAction(getAction("fingering-text"));
       menuAddText->addSeparator();

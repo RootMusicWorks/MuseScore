@@ -28,6 +28,8 @@
 #include "splitstaff.h"
 #include "textcursor.h"
 #include "textpalette.h"
+
+#include <QInputDialog>
 #include "texttools.h"
 #include "tourhandler.h"
 #include "zoombox.h"
@@ -2421,6 +2423,9 @@ void ScoreView::cmd(const char* s)
                   }},
             {{"rehearsalmark-text"}, [](ScoreView* cv, const QByteArray&) {
                   cv->cmdAddText(Tid::REHEARSAL_MARK);
+                  }},
+            {{"rehearsalmark-preset"}, [](ScoreView* cv, const QByteArray&) {
+                  cv->cmdChooseRehearsalMark();
                   }},
             {{"instrument-change-text"}, [](ScoreView* cv, const QByteArray&) {
                   cv->cmdAddText(Tid::INSTRUMENT_CHANGE);
@@ -4948,10 +4953,38 @@ void ScoreView::cmdAddChordName(HarmonyType ht)
       }
 
 //---------------------------------------------------------
+//   cmdChooseRehearsalMark
+//---------------------------------------------------------
+
+void ScoreView::cmdChooseRehearsalMark()
+      {
+      if (!_score->selection().isRange() || !_score->selection().startSegment()) {
+            QMessageBox::information(this, tr("Choose Rehearsal Mark"), tr("Select a measure first."));
+            return;
+            }
+
+      const QStringList choices {
+            QStringLiteral("A"), QStringLiteral("B"), QStringLiteral("C"), QStringLiteral("D"),
+            QStringLiteral("E"), QStringLiteral("F"), QStringLiteral("G"), QStringLiteral("H"),
+            QStringLiteral("Intro"), QStringLiteral("Outro"), QStringLiteral("Bridge"),
+            QStringLiteral("Inter Gt solo")
+            };
+      bool accepted = false;
+      QString choice = QInputDialog::getItem(this, tr("Choose Rehearsal Mark"),
+            tr("Choose a mark for the first selected measure. An existing mark at the measure start will be replaced."),
+            choices, 0, false, &accepted);
+      if (!accepted)
+            return;
+      if (choice == choices.last())
+            choice = QStringLiteral("Inter\nGt solo");
+      cmdAddText(Tid::REHEARSAL_MARK, Tid::DEFAULT, PropertyFlags::STYLED, Placement::ABOVE, choice);
+      }
+
+//---------------------------------------------------------
 //   cmdAddText
 //---------------------------------------------------------
 
-void ScoreView::cmdAddText(Tid tid, Tid customTid, PropertyFlags pf, Placement p)
+void ScoreView::cmdAddText(Tid tid, Tid customTid, PropertyFlags pf, Placement p, const QString& rehearsalPreset)
       {
       if (!_score->checkHasMeasures())
             return;
@@ -5016,6 +5049,8 @@ void ScoreView::cmdAddText(Tid tid, Tid customTid, PropertyFlags pf, Placement p
                               }
                         if (s) {
                               editExistingText = true;
+                              if (rehearsal && !rehearsalPreset.isEmpty() && s->plainText() != rehearsalPreset)
+                                    s->undoChangeProperty(Pid::TEXT, TextBase::plainToXmlText(rehearsalPreset));
                               break;
                               }
                         segment = measure->undoGetSegmentR(SegmentType::ChordRest, Fraction(0, 1));
@@ -5044,8 +5079,12 @@ void ScoreView::cmdAddText(Tid tid, Tid customTid, PropertyFlags pf, Placement p
                         s->setParent(segment);
                         s->setTrack(rehearsal ? 0 : staffIdx * VOICES);
                         if (rehearsal) {
-                              s->setXmlText(_score->createRehearsalMarkText(toRehearsalMark(s)));
-                              selectRehearsalText = true;
+                              if (rehearsalPreset.isEmpty()) {
+                                    s->setXmlText(_score->createRehearsalMarkText(toRehearsalMark(s)));
+                                    selectRehearsalText = true;
+                                    }
+                              else
+                                    s->setPlainText(rehearsalPreset);
                               }
                         _score->undoAddElement(s);
                         }
@@ -5136,6 +5175,10 @@ void ScoreView::cmdAddText(Tid tid, Tid customTid, PropertyFlags pf, Placement p
                         }
                   }
             adjustCanvasPosition(s, false);
+            if (!rehearsalPreset.isEmpty()) {
+                  _score->select(s, SelectType::SINGLE, 0);
+                  return;
+                  }
             startEditMode(s);
             if (selectRehearsalText && editData.element == s)
                   s->selectAll(s->cursor(editData));
