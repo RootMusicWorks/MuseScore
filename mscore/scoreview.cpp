@@ -5027,6 +5027,8 @@ void ScoreView::cmdAddText(Tid tid, Tid customTid, PropertyFlags pf, Placement p
                         }
 
                   s = rehearsal ? static_cast<TextBase*>(new RehearsalMark(_score)) : new StaffText(_score, Tid::STAFF);
+                  if (rehearsal)
+                        toRehearsalMark(s)->setNewInsertionDefaults();
                   // if the previous text is UNSTYLED or NOSTYLE
                   // and the next text is created using text tab command
                   // (only those created in this way can make pf not STYLED, see definition of ScoreView::textTab())

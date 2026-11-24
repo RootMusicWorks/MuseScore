@@ -545,8 +545,10 @@ Element* ChordRest::drop(EditData& data)
                   e->setTrack((track() / VOICES) * VOICES);
                   if (e->isRehearsalMark()) {
                         RehearsalMark* r = toRehearsalMark(e);
-                        if (fromPalette)
+                        if (fromPalette) {
+                              r->setNewInsertionDefaults();
                               r->setXmlText(score()->createRehearsalMarkText(r));
+                              }
                         }
                   score()->undoAddElement(e);
                   return e;

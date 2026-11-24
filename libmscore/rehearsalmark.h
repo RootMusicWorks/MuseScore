@@ -25,6 +25,7 @@ class RehearsalMark final : public TextBase  {
 
    public:
       RehearsalMark(Score* score);
+      void setNewInsertionDefaults();
 
       RehearsalMark* clone() const override { return new RehearsalMark(*this); }
       ElementType type() const override     { return ElementType::REHEARSAL_MARK; }

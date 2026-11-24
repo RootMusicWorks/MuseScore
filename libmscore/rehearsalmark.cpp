@@ -37,6 +37,13 @@ RehearsalMark::RehearsalMark(Score* s)
       setSystemFlag(true);
       }
 
+void RehearsalMark::setNewInsertionDefaults()
+      {
+      setAutoplace(false);
+      setSizeIsSpatiumDependent(false);
+      setPropertyFlags(Pid::SIZE_SPATIUM_DEPENDENT, PropertyFlags::UNSTYLED);
+      }
+
 //---------------------------------------------------------
 //   layout
 //---------------------------------------------------------
