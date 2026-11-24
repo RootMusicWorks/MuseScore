@@ -519,8 +519,11 @@ void Palette::wheelEvent(QWheelEvent* ev)
 void Palette::setRepeatInsertionDefaults(Element* element)
       {
       qreal fontSize = 0.0;
-      if (element->isJump() && toJump(element)->jumpType() == Jump::Type::DS)
-            fontSize = 12.0;
+      if (element->isJump()) {
+            const Jump::Type type = toJump(element)->jumpType();
+            if (type == Jump::Type::DC || type == Jump::Type::DS)
+                  fontSize = 12.0;
+            }
       else if (element->isMarker()) {
             Marker* marker = toMarker(element);
             switch (marker->markerType()) {
