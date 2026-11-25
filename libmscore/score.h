@@ -1143,7 +1143,8 @@ class Score : public QObject, public ScoreElement {
       void respace(std::vector<ChordRest*>* elements);
       void transposeSemitone(int semitone);
       void transposeDiatonicAlterations(TransposeDirection direction);
-      void insertMeasure(ElementType type, MeasureBase*, bool createEmptyMeasures = false, bool moveSignaturesClef = true);
+      void insertMeasure(ElementType type, MeasureBase*, bool createEmptyMeasures = false, bool moveSignaturesClef = true,
+                         Spatium rehearsalFrameWidth = Spatium());
       Audio* audio() const         { return _audio;    }
       void setAudio(Audio* a)      { _audio = a;       }
       PlayMode playMode() const    { return _playMode; }

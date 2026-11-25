@@ -14,6 +14,7 @@
 #include "articulation.h"
 #include "barline.h"
 #include "beam.h"
+#include "box.h"
 #include "bracket.h"
 #include "breath.h"
 #include "chord.h"
@@ -3219,8 +3220,10 @@ void Score::nextInputPos(ChordRest* cr, bool doSelect)
 //    If measure is zero, append new MeasureBase.
 //---------------------------------------------------------
 
-void Score::insertMeasure(ElementType type, MeasureBase* measure, bool createEmptyMeasures, bool moveSignaturesClef)
+void Score::insertMeasure(ElementType type, MeasureBase* measure, bool createEmptyMeasures, bool moveSignaturesClef,
+                          Spatium rehearsalFrameWidth)
       {
+      const bool rehearsalFrame = type == ElementType::HBOX && !rehearsalFrameWidth.isZero();
       Fraction tick;
       if (measure) {
             if (measure->isMeasure() && toMeasure(measure)->isMMRest()) {
@@ -3262,8 +3265,21 @@ void Score::insertMeasure(ElementType type, MeasureBase* measure, bool createEmp
                   if (!im)
                         qDebug("measure not found");
                   }
+            if (rehearsalFrame && (!im || (im->prev() && im->prev()->isHBox())))
+                  continue;
             MeasureBase* mb = toMeasureBase(Element::create(type, score));
             mb->setTick(tick);
+            if (rehearsalFrame) {
+                  HBox* frame = toHBox(mb);
+                  frame->setBoxWidth(rehearsalFrameWidth);
+                  frame->setLeftMargin(0.0);
+                  frame->setRightMargin(0.0);
+                  frame->setTopGap(0.0);
+                  frame->setBottomGap(0.0);
+                  frame->setPropertyFlags(Pid::TOP_GAP, PropertyFlags::UNSTYLED);
+                  frame->setPropertyFlags(Pid::BOTTOM_GAP, PropertyFlags::UNSTYLED);
+                  frame->setCreateSystemHeader(true);
+                  }
 
             if (im)
                   im = im->top(); // don't try to insert in front of nested frame
@@ -3275,6 +3291,8 @@ void Score::insertMeasure(ElementType type, MeasureBase* measure, bool createEmp
                   m->setTicks(f);
                   }
             undo(new InsertMeasures(mb, mb));
+            if (rehearsalFrame)
+                  mb->undoSetNoBreak(true);
 
             if (type == ElementType::MEASURE) {
                   Measure* m  = toMeasure(mb);  // new measure

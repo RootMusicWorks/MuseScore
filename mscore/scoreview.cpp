@@ -5103,8 +5103,12 @@ void ScoreView::cmdAddText(Tid tid, Tid customTid, PropertyFlags pf, Placement p
                                     s->setXmlText(_score->createRehearsalMarkText(toRehearsalMark(s)));
                                     selectRehearsalText = true;
                                     }
-                              else
+                              else {
                                     s->setPlainText(rehearsalPreset);
+                                    toRehearsalMark(s)->setPlaceInPrecedingFrame();
+                                    const Spatium width(rehearsalPreset.size() == 1 ? 7.0 : 14.0);
+                                    _score->insertMeasure(ElementType::HBOX, segment->measure(), false, false, width);
+                                    }
                               }
                         _score->undoAddElement(s);
                         }

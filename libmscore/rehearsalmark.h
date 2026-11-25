@@ -22,10 +22,14 @@ namespace Ms {
 //---------------------------------------------------------
 
 class RehearsalMark final : public TextBase  {
+      bool _placeInPrecedingFrame { false };
 
    public:
       RehearsalMark(Score* score);
       void setNewInsertionDefaults();
+      void setPlaceInPrecedingFrame() { _placeInPrecedingFrame = true; }
+      bool readProperties(XmlReader&) override;
+      void write(XmlWriter&) const override;
 
       RehearsalMark* clone() const override { return new RehearsalMark(*this); }
       ElementType type() const override     { return ElementType::REHEARSAL_MARK; }
