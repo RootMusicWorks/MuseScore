@@ -284,6 +284,9 @@ class ScoreView : public QWidget, public MuseScoreView {
       virtual void lyricsUnderscore() override;
       virtual void textTab(bool back = false) override;
       void harmonyTab(bool back);
+      void harmonyAdvanceByTimeSignature();
+      void harmonyMoveToChordRest(bool back);
+      void harmonyEditAt(Measure*, const Fraction& tick);
       void harmonyBeatsTab(bool noterest, bool back);
       void harmonyTicksTab(const Fraction& ticks);
       void figuredBassTab(bool meas, bool back);

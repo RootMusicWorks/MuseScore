@@ -51,6 +51,9 @@ bool ScoreView::event(QEvent* event)
                         break;
 
                   if (textEditMode()) {
+                        if (state == ViewState::EDIT && editData.element->isHarmony() && key == Qt::Key_Tab
+                            && !(ke->modifiers() & ~Qt::KeyboardModifiers(Qt::KeypadModifier)))
+                              harmonyTab(false);
                         // block Tab/Backtab in text editing mode
                         return true;
                         }
@@ -68,6 +71,13 @@ bool ScoreView::event(QEvent* event)
                   break;
             case QEvent::ShortcutOverride: {
                   QKeyEvent* ke = static_cast<QKeyEvent*>(event);
+                  if (state == ViewState::EDIT && editData.element && editData.element->isHarmony()
+                      && !(ke->modifiers() & ~Qt::KeyboardModifiers(Qt::KeypadModifier))
+                      && (ke->key() == Qt::Key_Tab || ke->key() == Qt::Key_Space
+                          || ke->key() == Qt::Key_Left || ke->key() == Qt::Key_Right)) {
+                        ke->accept();
+                        return true;
+                        }
                   switch (ke->key()) {
                         case Qt::Key_Left:
                         case Qt::Key_Right:
@@ -869,6 +879,19 @@ void ScoreView::keyPressEvent(QKeyEvent* ev)
                   return;
             }
       else if (editData.element->isHarmony()) {
+            if (!(editData.modifiers & ~Qt::KeyboardModifiers(Qt::KeypadModifier))) {
+                  switch (editData.key) {
+                        case Qt::Key_Space:
+                              harmonyAdvanceByTimeSignature();
+                              return;
+                        case Qt::Key_Left:
+                        case Qt::Key_Right:
+                              harmonyMoveToChordRest(editData.key == Qt::Key_Left);
+                              return;
+                        default:
+                              break;
+                        }
+                  }
             if (editData.key == Qt::Key_Space && !(editData.modifiers & CONTROL_MODIFIER)) {
                   harmonyBeatsTab(true, editData.modifiers & Qt::ShiftModifier);
                   return;
