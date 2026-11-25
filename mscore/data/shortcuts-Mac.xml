@@ -644,6 +644,9 @@
     </SC>
   <SC>
     <key>rehearsalmark-text</key>
+    </SC>
+  <SC>
+    <key>rehearsalmark-preset</key>
     <seq>Ctrl+M</seq>
     </SC>
   <SC>

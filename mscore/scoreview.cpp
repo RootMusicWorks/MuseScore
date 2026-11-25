@@ -29,7 +29,10 @@
 #include "textcursor.h"
 #include "textpalette.h"
 
-#include <QInputDialog>
+#include <QDialog>
+#include <QGridLayout>
+#include <QLabel>
+#include <QPushButton>
 #include "texttools.h"
 #include "tourhandler.h"
 #include "zoombox.h"
@@ -4967,16 +4970,33 @@ void ScoreView::cmdChooseRehearsalMark()
             QStringLiteral("A"), QStringLiteral("B"), QStringLiteral("C"), QStringLiteral("D"),
             QStringLiteral("E"), QStringLiteral("F"), QStringLiteral("G"), QStringLiteral("H"),
             QStringLiteral("Intro"), QStringLiteral("Outro"), QStringLiteral("Bridge"),
-            QStringLiteral("Inter Gt solo")
+            QStringLiteral("Inter\nGt solo")
             };
-      bool accepted = false;
-      QString choice = QInputDialog::getItem(this, tr("Choose Rehearsal Mark"),
-            tr("Choose a mark for the first selected measure. An existing mark at the measure start will be replaced."),
-            choices, 0, false, &accepted);
-      if (!accepted)
+
+      QDialog dialog(this);
+      dialog.setWindowTitle(tr("Choose Rehearsal Mark"));
+      QGridLayout* layout = new QGridLayout(&dialog);
+      QLabel* description = new QLabel(
+            tr("Choosing a mark replaces any existing mark at the start of the first selected measure."), &dialog);
+      description->setWordWrap(true);
+      constexpr int columns = 4;
+      layout->addWidget(description, 0, 0, 1, columns);
+      for (int column = 0; column < columns; ++column)
+            layout->setColumnStretch(column, 1);
+
+      QString choice;
+      for (int i = 0; i < choices.size(); ++i) {
+            const QString label = choices.at(i);
+            QPushButton* button = new QPushButton(label, &dialog);
+            button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+            layout->addWidget(button, 1 + i / columns, i % columns);
+            connect(button, &QPushButton::clicked, &dialog, [&dialog, &choice, label]() {
+                  choice = label;
+                  dialog.accept();
+                  });
+            }
+      if (dialog.exec() != QDialog::Accepted)
             return;
-      if (choice == choices.last())
-            choice = QStringLiteral("Inter\nGt solo");
       cmdAddText(Tid::REHEARSAL_MARK, Tid::DEFAULT, PropertyFlags::STYLED, Placement::ABOVE, choice);
       }
 
