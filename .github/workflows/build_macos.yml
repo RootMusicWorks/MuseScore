@@ -29,6 +29,10 @@ on:
         default: 'on'
         type: string
         required: true
+      adhoc_signing:
+        description: 'Ad-hoc signing for devel only (notarize and publish must be off)'
+        type: boolean
+        default: false
       execfrom:
         description: 'workflow github.event_name workaround, leave as is'
         default: 'false'
@@ -83,7 +87,18 @@ jobs:
     steps:
     - id: gen1
       name: Set or pass values
+      env:
+        ADHOC_SIGNING: ${{ inputs.adhoc_signing }}
+        REQUESTED_BUILD_MODE: ${{ inputs.build_mode }}
+        REQUESTED_NOTARIZE: ${{ inputs.notarize }}
+        REQUESTED_PUBLISH: ${{ inputs.publish }}
       run: |
+        if [[ "$ADHOC_SIGNING" == true ]] &&
+           [[ "$REQUESTED_BUILD_MODE" != devel || "$REQUESTED_NOTARIZE" != off || "$REQUESTED_PUBLISH" != off ]]; then
+          echo "::error::Ad-hoc signing requires devel mode, notarize=off, and publish=off."
+          exit 1
+        fi
+
         if [[ "${{ inputs.execfrom }}" == "publishdev" ]]; then
 
           echo "triggered by on.push/pull_request/schedule of publishdev , on.workflow_call of build macos"
@@ -207,6 +222,8 @@ jobs:
         T_ID=${{ secrets.TELEMETRY_TRACK_ID }}; if [ -z "$T_ID" ]; then T_ID="''"; fi
         bash ./build/ci/macos/build.sh -n ${{ github.run_id }} --telemetry $T_ID
     - name: Package
+      env:
+        ADHOC_SIGNING: ${{ inputs.adhoc_signing }}
       run: |
         S_S="${{ secrets.MAC_SIGN_CERTIFICATE_ENCRYPT_SECRET }}"; if [ -z "$S_S" ]; then S_S="''"; fi
         S_P="${{ secrets.MAC_SIGN_CERTIFICATE_PASSWORD }}"; if [ -z "$S_P" ]; then S_P="''"; fi
@@ -231,7 +248,7 @@ jobs:
       run: |
         bash ./build/ci/tools/osuosl/publish.sh -s ${{ secrets.OSUOSL_SSH_ENCRYPT_SECRET }} --os macos -v 3
     - name: Upload artifacts on GitHub
-      if: ${{ always() }}
+      if: ${{ always() && (!inputs.adhoc_signing || success()) }}
       uses: actions/upload-artifact@v7
       with:
         name: ${{ env.UPLOAD_ARTIFACT_NAME }}
@@ -292,6 +309,8 @@ jobs:
         T_ID=${{ secrets.TELEMETRY_TRACK_ID }}; if [ -z "$T_ID" ]; then T_ID="''"; fi
         bash ./build/ci/macos/build.sh -n ${{ github.run_id }} --telemetry $T_ID
     - name: Package
+      env:
+        ADHOC_SIGNING: ${{ inputs.adhoc_signing }}
       run: |
         S_S="${{ secrets.MAC_SIGN_CERTIFICATE_ENCRYPT_SECRET }}"; if [ -z "$S_S" ]; then S_S="''"; fi
         S_P="${{ secrets.MAC_SIGN_CERTIFICATE_PASSWORD }}"; if [ -z "$S_P" ]; then S_P="''"; fi
@@ -316,7 +335,7 @@ jobs:
       run: |
         bash ./build/ci/tools/osuosl/publish.sh -s ${{ secrets.OSUOSL_SSH_ENCRYPT_SECRET }} --os macos -v 3
     - name: Upload artifacts on GitHub
-      if: ${{ always() }}
+      if: ${{ always() && (!inputs.adhoc_signing || success()) }}
       uses: actions/upload-artifact@v7
       with:
         name: ${{ env.UPLOAD_ARTIFACT_NAME }}

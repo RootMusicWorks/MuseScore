@@ -20,11 +20,15 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-if [ -z "$SIGN_CERTIFICATE_ENCRYPT_SECRET" ]; then echo "warning: not set SIGN_CERTIFICATE_ENCRYPT_SECRET"; fi
-if [ -z "$SIGN_CERTIFICATE_PASSWORD" ]; then echo "warning: not set SIGN_CERTIFICATE_PASSWORD"; fi
-
-echo "SIGN_CERTIFICATE_ENCRYPT_SECRET: $SIGN_CERTIFICATE_ENCRYPT_SECRET"
-echo "SIGN_CERTIFICATE_PASSWORD: $SIGN_CERTIFICATE_PASSWORD"
+BUILD_MODE=$(cat "$ARTIFACTS_DIR/env/build_mode.env")
+signing_args=()
+if [[ "${ADHOC_SIGNING:-false}" == true ]]; then
+    if [[ "$BUILD_MODE" != devel || "${DO_NOTARIZE:-}" != false || "${DO_PUBLISH:-}" != false ]]; then
+        echo "Ad-hoc signing requires devel mode with notarization and publishing disabled." >&2
+        exit 1
+    fi
+    signing_args+=(--adhoc)
+fi
 
 mkdir -p applebuild/mscore.app/Contents/Resources/Frameworks
 wget -c --no-check-certificate -nv -O musescore_dependencies_macos.zip  http://utils.musescore.org.s3.amazonaws.com/musescore_dependencies_macos.zip
@@ -35,7 +39,7 @@ mkdir -p applebuild/mscore.app/Contents/Frameworks
 cp -Rf ~/Library/Frameworks/Sparkle.framework applebuild/mscore.app/Contents/Frameworks
 
 # Setup keychain for code sign
-if [ "$SIGN_CERTIFICATE_ENCRYPT_SECRET" != "''" ]; then 
+if [[ "${ADHOC_SIGNING:-false}" != true && "$SIGN_CERTIFICATE_ENCRYPT_SECRET" != "''" ]]; then
 
     7z x -y ./build/ci/macos/resources/mac_musescore.p12.enc -o./build/ci/macos/resources/ -p${SIGN_CERTIFICATE_ENCRYPT_SECRET}
 
@@ -52,7 +56,6 @@ if [ "$SIGN_CERTIFICATE_ENCRYPT_SECRET" != "''" ]; then
     security set-key-partition-list -S apple-tool:,apple: -s -k ci $KEYCHAIN
 fi
 
-BUILD_MODE=$(cat $ARTIFACTS_DIR/env/build_mode.env)
 BUILD_VERSION=$(cat $ARTIFACTS_DIR/env/build_version.env)
 BUILD_REVISION=$(cat $ARTIFACTS_DIR/env/build_revision.env)
 
@@ -79,7 +82,7 @@ if [ "$BUILD_MODE" == "stable" ]; then
   PACKAGE_VERSION="${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}"
 fi
 
-build/package_mac --longer_name "$APP_LONGER_NAME" --version "$PACKAGE_VERSION" --developer_name "$DEVELOPER_NAME"
+build/package_mac --longer_name "$APP_LONGER_NAME" --version "$PACKAGE_VERSION" --developer_name "$DEVELOPER_NAME" "${signing_args[@]}" || exit 1
 
 DMGFILE="$(ls applebuild/*.dmg)"
 echo "DMGFILE: $DMGFILE"

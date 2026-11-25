@@ -5,6 +5,7 @@ LONG_NAME="MuseScore"
 LONGER_NAME="MuseScore 3"
 VERSION=0
 DEVELOPER_NAME="MuseScore"
+ADHOC=false
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -12,10 +13,57 @@ while [[ "$#" -gt 0 ]]; do
         --longer_name) LONGER_NAME="$2"; shift ;;
         --version) VERSION="$2"; shift ;;
         --developer_name) DEVELOPER_NAME="$2"; shift ;;
+        --adhoc) ADHOC=true ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
 done
+
+sign_adhoc() (
+    set -o pipefail
+    local app="$1"
+    local path kind plist executable framework
+
+    # Sign Mach-O files and nested bundles before signing their enclosing bundles.
+    find "$app/Contents" -depth \( -type f -o -type d \) -print0 | (
+        signed_paths=()
+        while IFS= read -r -d '' path; do
+            if [[ -f "$path" ]]; then
+                kind=$(file -b "$path") || exit 1
+                [[ "$kind" == Mach-O* ]] || continue
+                case "$path" in
+                    */Contents/MacOS/*)
+                        plist="${path%/*}/../Info.plist"
+                        if [[ -f "$plist" ]]; then
+                            executable=$(plutil -extract CFBundleExecutable raw -o - "$plist") || exit 1
+                            # codesign resolves a main executable to its enclosing bundle.
+                            [[ "${path##*/}" != "$executable" ]] || continue
+                        fi
+                        ;;
+                    *.framework/*)
+                        framework="${path%/*}"
+                        framework="${framework%.framework*}"
+                        [[ "${path##*/}" != "${framework##*/}" ]] || continue
+                        ;;
+                esac
+            else
+                case "$path" in
+                    *.app|*.framework|*.xpc|*.appex|*.bundle) ;;
+                    *) continue ;;
+                esac
+            fi
+            codesign --force --sign - "$path" || exit 1
+            signed_paths+=("$path")
+        done
+
+        codesign --force --sign - "$app" || exit 1
+        # Verify after sealing the enclosing bundle, including code in Resources.
+        for path in "${signed_paths[@]}"; do
+            codesign --verify --strict "$path" || exit 1
+        done
+        codesign --verify --deep --strict --verbose=2 "$app"
+    )
+)
 
 if [ "$VERSION" == "0" ]; then 
     SCRIPT_DIR=$(cd "$(dirname ${BASH_SOURCE[0]})" && pwd)
@@ -193,15 +241,27 @@ CODE_PATHS=(
 )
 
 #codesign
-echo "Codesign"
-# `codesign --deep` doesn't seem to search for code in Contents/Resources directory so sign libraries in it manually
-find "${VOLUME}/${LONGER_NAME}.app/Contents/Resources" -name '*.dylib' -exec codesign --force --options runtime --deep -s "Developer ID Application: ${DEVELOPER_NAME}" '{}' ';'
-# Sign code in other (more conventional) locations
-codesign --force --options runtime --entitlements "${WORKING_DIRECTORY}/../build/macosx_entitlements.plist" --deep -s "Developer ID Application: ${DEVELOPER_NAME}" "${CODE_PATHS[@]}"
-echo "spctl"
-spctl --assess --type execute "${VOLUME}/${LONGER_NAME}.app"
-echo "Codesign verify"
-codesign --verify --deep --strict --verbose=2 "${CODE_PATHS[@]}"
+SIGNING_FAILED=false
+if [[ "$ADHOC" == true ]]; then
+    echo "Ad-hoc codesign and verification"
+    if sign_adhoc "${CODE_PATHS[1]}"; then
+        spctl --assess --type execute "${CODE_PATHS[1]}" ||
+            echo "Gatekeeper did not accept the ad-hoc signed development build."
+    else
+        echo "Ad-hoc signing or signature verification failed." >&2
+        SIGNING_FAILED=true
+    fi
+else
+    echo "Codesign"
+    # `codesign --deep` doesn't seem to search for code in Contents/Resources directory so sign libraries in it manually
+    find "${VOLUME}/${LONGER_NAME}.app/Contents/Resources" -name '*.dylib' -exec codesign --force --options runtime --deep -s "Developer ID Application: ${DEVELOPER_NAME}" '{}' ';'
+    # Sign code in other (more conventional) locations
+    codesign --force --options runtime --entitlements "${WORKING_DIRECTORY}/../build/macosx_entitlements.plist" --deep -s "Developer ID Application: ${DEVELOPER_NAME}" "${CODE_PATHS[@]}"
+    echo "spctl"
+    spctl --assess --type execute "${VOLUME}/${LONGER_NAME}.app"
+    echo "Codesign verify"
+    codesign --verify --deep --strict --verbose=2 "${CODE_PATHS[@]}"
+fi
 
 echo "Unmount"
 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
@@ -217,6 +277,10 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
     echo "Failed to unmount the disk image; retrying in 30s"
     sleep 30
 done
+
+if [[ "$SIGNING_FAILED" == true ]]; then
+    exit 1
+fi
 
 # Convert the disk image to read-only
 hdiutil convert ${WORKING_DIRECTORY}/${DMGNAME} -format UDBZ -o ${WORKING_DIRECTORY}/${COMPRESSEDDMGNAME}
