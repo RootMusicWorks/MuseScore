@@ -22,13 +22,17 @@ namespace Ms {
 //---------------------------------------------------------
 
 class RehearsalMark final : public TextBase  {
-      enum class FramePlacement { None = 0, Legacy = 1, Offset = 2 };
+      enum class FramePlacement { None = 0, Legacy = 1, Offset = 2, Automatic = 3 };
       FramePlacement _framePlacement { FramePlacement::None };
+      int _frameTabStaff { -1 }; // Index in the master score.
+
+      QRectF frameBounds() const;
 
    public:
       RehearsalMark(Score* score);
       void setNewInsertionDefaults();
-      void setPlaceInPrecedingFrame(qreal yOffsetMm);
+      Spatium setupAutomaticFrame(Measure* selectedMeasure, int firstStaff, int endStaff);
+      void layoutFrameOnTabStaff();
       bool readProperties(XmlReader&) override;
       void write(XmlWriter&) const override;
 

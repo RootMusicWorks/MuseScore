@@ -48,6 +48,7 @@
 #include "page.h"
 #include "part.h"
 #include "pitchspelling.h"
+#include "rehearsalmark.h"
 #include "repeat.h"
 #include "rest.h"
 #include "score.h"
@@ -677,6 +678,17 @@ void Measure::layout2()
             }
 
       MeasureBase::layout();  // layout LAYOUT_BREAK elements
+
+      if (prev() && prev()->isHBox()) {
+            for (Segment* seg = first(); seg && seg->rtick().isZero(); seg = seg->next()) {
+                  if (!seg->enabled())
+                        continue;
+                  for (Element* annotation : seg->annotations()) {
+                        if (annotation->isRehearsalMark())
+                              toRehearsalMark(annotation)->layoutFrameOnTabStaff();
+                        }
+                  }
+            }
 
       //---------------------------------------------------
       //    layout ties

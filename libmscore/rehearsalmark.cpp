@@ -15,6 +15,8 @@
 #include "score.h"
 #include "rehearsalmark.h"
 #include "measure.h"
+#include "staff.h"
+#include "stafflines.h"
 #include "system.h"
 #include "xml.h"
 
@@ -47,20 +49,61 @@ void RehearsalMark::setNewInsertionDefaults()
       setPropertyFlags(Pid::SIZE_SPATIUM_DEPENDENT, PropertyFlags::UNSTYLED);
       }
 
-void RehearsalMark::setPlaceInPrecedingFrame(qreal yOffsetMm)
+QRectF RehearsalMark::frameBounds() const
       {
-      _framePlacement = FramePlacement::Offset;
-      setOffset(0.0, yOffsetMm * DPMM);
+      if (!hasFrame())
+            return bbox();
+      const qreal frameSpatium = sizeIsSpatiumDependent() ? spatium() : MScore::baseStyle().value(Sid::spatium).toDouble();
+      const qreal halfStroke = frameWidth().val() * frameSpatium * 0.5;
+      return frame.adjusted(-halfStroke, -halfStroke, halfStroke, halfStroke);
+      }
+
+Spatium RehearsalMark::setupAutomaticFrame(Measure* selectedMeasure, int firstStaff, int endStaff)
+      {
+      _framePlacement = FramePlacement::Automatic;
+      setOffset(QPointF());
       setPropertyFlags(Pid::OFFSET, PropertyFlags::UNSTYLED);
+
+      for (int i = firstStaff; i < endStaff; ++i) {
+            Staff* staff = score()->staff(i);
+            if (!staff || !staff->isTabStaff(selectedMeasure->tick()) || staff->invisible(selectedMeasure->tick())
+                || !selectedMeasure->visible(i))
+                  continue;
+            if (score()->isMaster())
+                  _frameTabStaff = i;
+            else {
+                  for (const Staff* linked : staff->staffList()) {
+                        if (linked->score() == score()->masterScore()) {
+                              _frameTabStaff = linked->idx();
+                              break;
+                              }
+                        }
+                  }
+            break;
+            }
+
+      TextBase::layout();
+      return Spatium(frameBounds().width() / score()->spatium() + 2.0);
       }
 
 bool RehearsalMark::readProperties(XmlReader& xml)
       {
+      if (xml.name() == "frameTabStaff") {
+            _frameTabStaff = xml.readInt() - 1;
+            return true;
+            }
       if (xml.name() != "placeInPrecedingFrame")
             return TextBase::readProperties(xml);
       // Existing scores store this as a boolean. Keep their extra 1sp shift.
       const QString value = xml.readElementText();
-      if (value == QStringLiteral("2"))
+      if (value == QStringLiteral("3")) {
+            _framePlacement = FramePlacement::Automatic;
+            if (isStyled(Pid::OFFSET)) {
+                  setOffset(QPointF());
+                  setPropertyFlags(Pid::OFFSET, PropertyFlags::UNSTYLED);
+                  }
+            }
+      else if (value == QStringLiteral("2"))
             _framePlacement = FramePlacement::Offset;
       else
             _framePlacement = value.isEmpty() || value.toInt() != 0 ? FramePlacement::Legacy : FramePlacement::None;
@@ -75,6 +118,8 @@ void RehearsalMark::write(XmlWriter& xml) const
       writeProperties(xml);
       if (_framePlacement != FramePlacement::None)
             xml.tag("placeInPrecedingFrame", int(_framePlacement));
+      if (_framePlacement == FramePlacement::Automatic && _frameTabStaff >= 0)
+            xml.tag("frameTabStaff", _frameTabStaff + 1);
       xml.etag();
       }
 
@@ -85,6 +130,8 @@ void RehearsalMark::write(XmlWriter& xml) const
 void RehearsalMark::layout()
       {
       TextBase::layout();
+      if (_framePlacement == FramePlacement::Automatic)
+            rypos() = styleValue(Pid::OFFSET, getPropertyStyle(Pid::OFFSET)).toPointF().y();
 
       Segment* s = segment();
       if (s) {
@@ -105,7 +152,8 @@ void RehearsalMark::layout()
                       && previous->isHBox() && previous->system() == sys) {
                         const HBox* frame = toHBox(previous);
                         const qreal frameCenter = frame->x() + frame->point(frame->boxWidth()) * 0.5;
-                        rxpos() = frameCenter - m->x() - s->x() - bbox().center().x();
+                        const QRectF bounds = _framePlacement == FramePlacement::Automatic ? frameBounds() : bbox();
+                        rxpos() = frameCenter - m->x() - s->x() - bounds.center().x();
                         if (_framePlacement == FramePlacement::Legacy)
                               rypos() += spatium();
                         }
@@ -130,6 +178,44 @@ void RehearsalMark::layout()
             }
       }
 
+void RehearsalMark::layoutFrameOnTabStaff()
+      {
+      if (_framePlacement != FramePlacement::Automatic)
+            return;
+      rypos() = styleValue(Pid::OFFSET, getPropertyStyle(Pid::OFFSET)).toPointF().y();
+      if (_frameTabStaff < 0 || !score()->showVBox())
+            return;
+
+      Segment* s = segment();
+      Measure* measure = s->measure();
+      MeasureBase* previous = measure->prev();
+      if (!previous || !previous->isHBox() || previous->system() != measure->system())
+            return;
+
+      Staff* target = score()->masterScore()->staff(_frameTabStaff);
+      if (!target)
+            return;
+      if (!score()->isMaster()) {
+            Staff* partStaff = nullptr;
+            for (Staff* linked : target->staffList()) {
+                  if (linked->score() == score()) {
+                        partStaff = linked;
+                        break;
+                        }
+                  }
+            target = partStaff;
+            }
+      if (!target || !target->isTabStaff(s->tick()) || target->invisible(s->tick()) || !measure->visible(target->idx()))
+            return;
+
+      StaffLines* lines = measure->staffLines(target->idx());
+      const auto& staffLines = lines->getLines();
+      if (staffLines.isEmpty())
+            return;
+      const qreal staffCenter = lines->pagePos().y() + (staffLines.first().y1() + staffLines.last().y1()) * 0.5;
+      rypos() = staffCenter - s->pagePos().y() - frameBounds().center().y();
+      }
+
 //---------------------------------------------------------
 //   propertyDefault
 //---------------------------------------------------------
@@ -137,13 +223,18 @@ void RehearsalMark::layout()
 QVariant RehearsalMark::propertyDefault(Pid id) const
       {
       switch (id) {
+            case Pid::OFFSET:
+                  if (_framePlacement == FramePlacement::Automatic)
+                        return QPointF();
+                  break;
             case Pid::SUB_STYLE:
                   return int(Tid::REHEARSAL_MARK);
             case Pid::PLACEMENT:
                   return score()->styleV(Sid::rehearsalMarkPlacement);
             default:
-                  return TextBase::propertyDefault(id);
+                  break;
             }
+      return TextBase::propertyDefault(id);
       }
 
 } // namespace Ms
