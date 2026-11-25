@@ -4732,6 +4732,16 @@ void Shortcut::load()
             else
                   e.unknown();
             }
+#ifdef Q_OS_MAC
+      // Older user shortcut files still bind Cmd+M to manual rehearsal marks.
+      // Keep other user bindings and any explicit shortcut for the chooser.
+      Shortcut* manualMark = getShortcut("rehearsalmark-text");
+      Shortcut* presetMark = getShortcut("rehearsalmark-preset");
+      const QKeySequence chooseMarkKey(Qt::CTRL | Qt::Key_M);
+      if (presetMark->_keys.isEmpty() && presetMark->_standardKey == QKeySequence::UnknownKey
+          && manualMark->_keys.removeAll(chooseMarkKey) > 0)
+            presetMark->_keys.append(chooseMarkKey);
+#endif
       source = f.fileName();
       dirty = false;
       }
