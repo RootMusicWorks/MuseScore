@@ -11,6 +11,7 @@
 //=============================================================================
 
 #include "box.h"
+#include "mscore.h"
 #include "score.h"
 #include "rehearsalmark.h"
 #include "measure.h"
@@ -46,11 +47,23 @@ void RehearsalMark::setNewInsertionDefaults()
       setPropertyFlags(Pid::SIZE_SPATIUM_DEPENDENT, PropertyFlags::UNSTYLED);
       }
 
+void RehearsalMark::setPlaceInPrecedingFrame(qreal yOffsetMm)
+      {
+      _framePlacement = FramePlacement::Offset;
+      setOffset(0.0, yOffsetMm * DPMM);
+      setPropertyFlags(Pid::OFFSET, PropertyFlags::UNSTYLED);
+      }
+
 bool RehearsalMark::readProperties(XmlReader& xml)
       {
       if (xml.name() != "placeInPrecedingFrame")
             return TextBase::readProperties(xml);
-      _placeInPrecedingFrame = xml.readBool();
+      // Existing scores store this as a boolean. Keep their extra 1sp shift.
+      const QString value = xml.readElementText();
+      if (value == QStringLiteral("2"))
+            _framePlacement = FramePlacement::Offset;
+      else
+            _framePlacement = value.isEmpty() || value.toInt() != 0 ? FramePlacement::Legacy : FramePlacement::None;
       return true;
       }
 
@@ -60,8 +73,8 @@ void RehearsalMark::write(XmlWriter& xml) const
             return;
       xml.stag(this);
       writeProperties(xml);
-      if (_placeInPrecedingFrame)
-            xml.tag("placeInPrecedingFrame", true);
+      if (_framePlacement != FramePlacement::None)
+            xml.tag("placeInPrecedingFrame", int(_framePlacement));
       xml.etag();
       }
 
@@ -88,12 +101,13 @@ void RehearsalMark::layout()
                   bool systemFirst = (sys && m->isFirstInSystem());
 
                   MeasureBase* previous = m->prev();
-                  if (_placeInPrecedingFrame && score()->showVBox() && sys && previous
+                  if (_framePlacement != FramePlacement::None && score()->showVBox() && sys && previous
                       && previous->isHBox() && previous->system() == sys) {
                         const HBox* frame = toHBox(previous);
                         const qreal frameCenter = frame->x() + frame->point(frame->boxWidth()) * 0.5;
                         rxpos() = frameCenter - m->x() - s->x() - bbox().center().x();
-                        rypos() += spatium();
+                        if (_framePlacement == FramePlacement::Legacy)
+                              rypos() += spatium();
                         }
                   else if (!header || repeat || !systemFirst) {
                         // no header, or header with repeat, or header mid-system - align with barline

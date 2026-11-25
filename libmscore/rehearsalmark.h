@@ -22,12 +22,13 @@ namespace Ms {
 //---------------------------------------------------------
 
 class RehearsalMark final : public TextBase  {
-      bool _placeInPrecedingFrame { false };
+      enum class FramePlacement { None = 0, Legacy = 1, Offset = 2 };
+      FramePlacement _framePlacement { FramePlacement::None };
 
    public:
       RehearsalMark(Score* score);
       void setNewInsertionDefaults();
-      void setPlaceInPrecedingFrame() { _placeInPrecedingFrame = true; }
+      void setPlaceInPrecedingFrame(qreal yOffsetMm);
       bool readProperties(XmlReader&) override;
       void write(XmlWriter&) const override;
 

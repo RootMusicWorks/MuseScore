@@ -5105,8 +5105,17 @@ void ScoreView::cmdAddText(Tid tid, Tid customTid, PropertyFlags pf, Placement p
                                     }
                               else {
                                     s->setPlainText(rehearsalPreset);
-                                    toRehearsalMark(s)->setPlaceInPrecedingFrame();
-                                    const Spatium width(rehearsalPreset.size() == 1 ? 7.0 : 14.0);
+                                    Spatium width(rehearsalPreset.size() == 1 ? 7.0 : 14.0);
+                                    qreal yOffsetMm = 5.20;
+                                    if (rehearsalPreset == QStringLiteral("Bridge")) {
+                                          width = Spatium(18.0);
+                                          yOffsetMm = 4.60;
+                                          }
+                                    else if (rehearsalPreset == QStringLiteral("Inter\nGt solo")) {
+                                          width = Spatium(18.0);
+                                          yOffsetMm = 2.00;
+                                          }
+                                    toRehearsalMark(s)->setPlaceInPrecedingFrame(yOffsetMm);
                                     _score->insertMeasure(ElementType::HBOX, segment->measure(), false, false, width);
                                     }
                               }
