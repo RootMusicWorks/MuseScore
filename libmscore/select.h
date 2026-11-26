@@ -170,7 +170,6 @@ class Selection {
 
       QString _lockReason;
 
-      QByteArray staffMimeData() const;
       QByteArray symbolListMimeData() const;
       SelectionFilter selectionFilter() const;
       bool canSelect(Element* e) const { return selectionFilter().canSelect(e); }
@@ -182,6 +181,7 @@ class Selection {
    public:
       Selection()                      { _score = 0; _state = SelState::NONE; }
       Selection(Score*);
+      QByteArray staffMimeData(int rhythmVoice = -1) const;
       Score* score() const             { return _score; }
       SelState state() const           { return _state; }
       bool isNone() const              { return _state == SelState::NONE; }

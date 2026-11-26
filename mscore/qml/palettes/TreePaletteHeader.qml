@@ -191,6 +191,11 @@ Item {
         }
         MenuSeparator {}
         MenuItem {
+            text: qsTr("Register Rhythm Pattern…")
+            enabled: paletteHeader.editingEnabled
+            onTriggered: paletteHeader.paletteWorkspace.mainPaletteController.registerRhythmPattern(paletteHeader.modelIndex)
+        }
+        MenuItem {
             text: qsTr("Palette Properties…")
             enabled: paletteHeader.editingEnabled
             onTriggered: paletteHeader.editPalettePropertiesRequested()

@@ -33,6 +33,7 @@
 #include "tremolo.h"
 #include "tuplet.h"
 #include "utils.h"
+#include "undo.h"
 #include "xml.h"
 
 namespace Ms {
@@ -71,12 +72,160 @@ static void transposeChord(Chord* c, Interval srcTranspose, const Fraction& tick
             }
       }
 
+// Only complete bars on one staff are valid rhythm pattern ranges.
+static QList<Measure*> rhythmMeasures(const Score* score, QString* meter)
+      {
+      const Selection& sel = score->selection();
+      QList<Measure*> measures;
+      if (!sel.isRange() || sel.isLocked() || !sel.startSegment() || sel.staffEnd() - sel.staffStart() != 1
+          || sel.startSegment()->measure()->isMMRest()
+          || (sel.endSegment() && sel.endSegment()->measure()->isMMRest()))
+            return measures;
+
+      const Fraction start = sel.tickStart();
+      const Fraction end = sel.tickEnd();
+      Measure* m = score->tick2measure(start);
+      if (!m || m->tick() != start || end <= start)
+            return measures;
+
+      QStringList bars;
+      for (; m && m->tick() < end; m = m->nextMeasure()) {
+            if (measures.size() == 4 || m->endTick() > end
+                || score->staff(sel.staffStart())->isLocalTimeSignature(m->tick()))
+                  return {};
+            measures.append(m);
+            const Fraction sig = m->timesig();
+            bars.append(QString("%1/%2:%3").arg(sig.numerator()).arg(sig.denominator())
+                        .arg(m->ticks().reduced().toString()));
+            }
+      if (measures.isEmpty() || measures.last()->endTick() != end)
+            return {};
+      *meter = bars.join(';');
+      return measures;
+      }
+
+QByteArray Score::rhythmPattern(QString* meter, int* voice) const
+      {
+      const auto measures = rhythmMeasures(this, meter);
+      if (measures.isEmpty())
+            return {};
+
+      const int track = selection().staffStart() * VOICES;
+      int selectedVoice = -1;
+      // A full-bar rest in voice 1 can be the placeholder for a secondary voice.
+      bool primaryRest = false;
+      for (Measure* m : measures) {
+            for (Segment* s = m->first(SegmentType::ChordRest); s; s = s->next(SegmentType::ChordRest)) {
+                  for (int v = 0; v < VOICES; ++v) {
+                        ChordRest* cr = toChordRest(s->element(track + v));
+                        if (!cr || (cr->isRest() && toRest(cr)->isGap()))
+                              continue;
+                        if (v == 0 && cr->isRest() && cr->durationType().type() == TDuration::DurationType::V_MEASURE) {
+                              primaryRest = true;
+                              continue;
+                              }
+                        if (cr->isRepeatMeasure() || (selectedVoice >= 0 && selectedVoice != v))
+                              return {};
+                        if (cr->isChord() && toChord(cr)->staffMove())
+                              return {};
+                        selectedVoice = v;
+                        }
+                  }
+            }
+      if (selectedVoice < 0 && !primaryRest)
+            return {};
+      *voice = selectedVoice < 0 ? 0 : selectedVoice;
+      return selection().staffMimeData(*voice);
+      }
+
+bool Score::applyRhythmPattern(const QByteArray& data, const QString& meter, int voice)
+      {
+      if (readOnly() || noteEntryMode() || voice < 0 || voice >= VOICES || data.isEmpty() || undoStack()->active())
+            return false;
+
+      QString targetMeter;
+      const auto measures = rhythmMeasures(this, &targetMeter);
+      if (measures.isEmpty() || targetMeter != meter)
+            return false;
+
+      const int staffIdx = selection().staffStart();
+      const int track = staffIdx * VOICES + voice;
+      const Fraction start = measures.first()->tick();
+      const Fraction end = measures.last()->endTick();
+
+      XmlReader header(data);
+      if (!header.readNextStartElement() || header.name() != "StaffList")
+            return false;
+      const Fraction length = Fraction::fromString(header.attribute("len"));
+      if (!length.isValid() || length != end - start)
+            return false;
+
+      // Segment annotations can stay at their original ticks. Span elements
+      // anchored directly to notes or chords need those objects to survive.
+      for (const auto& entry : spannerMap().findOverlapping(start.ticks(), end.ticks())) {
+            Spanner* spanner = entry.value;
+            if (!spanner->isTie() && (spanner->anchor() == Spanner::Anchor::CHORD || spanner->anchor() == Spanner::Anchor::NOTE)
+                && ((spanner->track() == track && spanner->tick() >= start && spanner->tick() < end)
+                    || (spanner->effectiveTrack2() == track && spanner->tick2() >= start && spanner->tick2() < end)))
+                  return false;
+            }
+
+      QList<ChordRest*> replace;
+      for (Measure* m : measures) {
+            for (Segment* s = m->first(SegmentType::ChordRest); s; s = s->next(SegmentType::ChordRest)) {
+                  ChordRest* cr = toChordRest(s->element(track));
+                  if (!cr)
+                        continue;
+                  if (!cr->lyrics().empty() || (cr->isChord() && toChord(cr)->staffMove()))
+                        return false;
+                  replace.append(cr);
+                  }
+            }
+
+      MScore::setError(MS_NO_ERROR);
+      startCmd();
+      for (ChordRest* cr : replace) {
+            if (!cr->isChord())
+                  continue;
+            for (Note* note : toChord(cr)->notes()) {
+                  if (note->tieBack())
+                        undoRemoveElement(note->tieBack());
+                  if (note->tieFor())
+                        undoRemoveElement(note->tieFor());
+                  }
+            }
+
+      // Removing a complete tuplet also removes all its member chord/rests.
+      QList<Tuplet*> tuplets;
+      for (ChordRest* cr : replace) {
+            if (Tuplet* tuplet = cr->topTuplet()) {
+                  if (!tuplets.contains(tuplet))
+                        tuplets.append(tuplet);
+                  }
+            else
+                  undoRemoveElement(cr);
+            }
+      for (Tuplet* tuplet : tuplets)
+            cmdDeleteTuplet(tuplet, false);
+
+      Segment* dst = measures.first()->undoGetSegment(SegmentType::ChordRest, start);
+      XmlReader reader(data);
+      reader.setPasteMode(true);
+      const bool ok = pasteStaff(reader, dst, staffIdx, Fraction(1, 1), voice)
+                      && MScore::_error == MS_NO_ERROR;
+      if (ok)
+            _selection.setRangeTicks(start, end, staffIdx, staffIdx + 1);
+      endCmd(!ok);
+      MScore::setError(MS_NO_ERROR);
+      return ok;
+      }
+
 //---------------------------------------------------------
 //   pasteStaff
 //    return false if paste fails
 //---------------------------------------------------------
 
-bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale)
+bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale, int rhythmVoice)
       {
       Q_ASSERT(dst->isChordRestType());
 
@@ -86,6 +235,7 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale)
       Tuplet* tuplet = nullptr;
       Fraction dstTick = dst->tick();
       bool pasted = false;
+      bool rhythmContentPasted = false;
       Fraction tickLen = Fraction(0,1);
       int staves  = 0;
       bool done   = false;
@@ -112,6 +262,9 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale)
             int staffStart = e.intAttribute("staff", 0);
             staves = e.intAttribute("staves", 0);
 
+            if (rhythmVoice >= 0 && (staves != 1 || tickLen <= Fraction(0, 1)))
+                  return false;
+
             Fraction oEndTick = dstTick + oTickLen;
             auto oSpanner = spannerMap().findContained(dstTick.ticks(), oEndTick.ticks());
             bool spannerFound = false;
@@ -133,6 +286,8 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale)
                   e.setTrack(srcStaffIdx * VOICES);
                   e.setTrackOffset((dstStaff - staffStart) * VOICES);
                   int dstStaffIdx = e.track() / VOICES;
+                  if (rhythmVoice >= 0 && dstStaffIdx != dstStaff)
+                        return false;
                   if (dstStaffIdx >= dst->score()->nstaves()) {
                         qDebug("paste beyond staves");
                         done = true;
@@ -142,6 +297,11 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale)
                   while (e.readNextStartElement()) {
                         pasted = true;
                         const QStringRef& tag(e.name());
+
+                        if (rhythmVoice >= 0 && tag != "transposeChromatic" && tag != "transposeDiatonic"
+                            && tag != "voiceOffset" && tag != "location" && tag != "Chord" && tag != "Rest"
+                            && tag != "Tuplet" && tag != "endTuplet" && tag != "Beam")
+                              return false;
 
                         if (tag == "transposeChromatic")
                               e.setTransposeChromatic(e.readInt());
@@ -154,11 +314,12 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale)
                                     if (e.name() != "voice")
                                           e.unknown();
                                     int voiceId = e.attribute("id", "-1").toInt();
-                                    Q_ASSERT(voiceId >= 0 && voiceId < VOICES);
+                                    if (voiceId < 0 || voiceId >= VOICES || (rhythmVoice >= 0 && voiceId != rhythmVoice))
+                                          return false;
                                     voiceOffset[voiceId] = e.readInt();
                                     }
                               e.readNext();
-                              if (!makeGap1(dstTick, dstStaffIdx, tickLen, voiceOffset)) {
+                              if (rhythmVoice < 0 && !makeGap1(dstTick, dstStaffIdx, tickLen, voiceOffset)) {
                                     qDebug("cannot make gap in staff %d at tick %d", dstStaffIdx, dstTick.ticks());
                                     done = true; // break main loop, cannot make gap
                                     break;
@@ -168,6 +329,9 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale)
                               Location loc = Location::relative();
                               loc.read(e);
                               e.setLocation(loc);
+                              if (rhythmVoice >= 0 && (e.track() != dstStaff * VOICES + rhythmVoice
+                                    || e.tick() < dstTick || e.tick() >= dstTick + tickLen))
+                                    return false;
                               }
                         else if (tag == "Tuplet") {
                               Tuplet* oldTuplet = tuplet;
@@ -224,6 +388,9 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale)
                               e.readNext();
                               }
                         else if (tag == "Chord" || tag == "Rest" || tag == "RepeatMeasure") {
+                              if (rhythmVoice >= 0 && (e.track() != dstStaff * VOICES + rhythmVoice
+                                    || e.tick() < dstTick || e.tick() >= dstTick + tickLen))
+                                    return false;
                               ChordRest* cr = toChordRest(Element::name2Element(tag, this));
                               cr->setTrack(e.track());
                               cr->read(e);
@@ -231,8 +398,18 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale)
                               Fraction tick = doScale ? (e.tick() - dstTick) * scale + dstTick : e.tick();
                               // no paste into local time signature
                               if (staff(dstStaffIdx)->isLocalTimeSignature(tick)) {
+                                    delete cr;
                                     MScore::setError(DEST_LOCAL_TIME_SIGNATURE);
                                     return false;
+                                    }
+                              if (rhythmVoice >= 0 && !cr->isGrace() && !tuplet) {
+                                    const Fraction duration = cr->actualTicksAt(tick);
+                                    if (!duration.isValid() || duration <= Fraction(0, 1)
+                                        || tick + duration > tick2measure(tick)->endTick()
+                                        || tick + duration > dstTick + tickLen) {
+                                          delete cr;
+                                          return false;
+                                          }
                                     }
                               if (startingBeam) {
                                     startingBeam->add(cr); // also calls cr->setBeam(startingBeam)
@@ -322,6 +499,7 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale)
                                                 }
                                           }
                                     pasteChordRest(cr, tick, e.transpose());
+                                    rhythmContentPasted = true;
                                     }
                               }
                         else if (tag == "Spanner") {
@@ -475,10 +653,13 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale)
                   }
             }
 
+      if (rhythmVoice >= 0 && (!rhythmContentPasted || done || e.hasError()))
+            return false;
+
       for (Score*& s : scoreList())     // for all parts
             s->connectTies();
 
-      if (pasted) {                       //select only if we pasted something
+      if (pasted && rhythmVoice < 0) {    // ordinary paste also repairs gaps and moves the view
             int endStaff = dstStaff + staves;
             if (endStaff > nstaves())
                   endStaff = nstaves();

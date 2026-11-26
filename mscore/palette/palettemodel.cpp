@@ -310,7 +310,7 @@ QVariant PaletteTreeModel::data(const QModelIndex& index, int role) const
                         }
                   case MimeDataRole: {
                         QVariantMap map;
-                        if (cell->element)
+                        if (cell->element && cell->rhythmVoice < 0)
                               map[mimeSymbolFormat] = cell->element->mimeData(QPointF());
                         map[PaletteCell::mimeDataFormat] = cell->mimeData();
                         return map;

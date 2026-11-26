@@ -235,6 +235,11 @@ void PaletteCell::write(XmlWriter& xml) const
       if (!qFuzzyCompare(mag, 1.0))
             xml.tag("mag", mag);
 
+      if (!rhythmPattern.isEmpty()) {
+            xml.stag(QString("rhythmPattern voice=\"%1\" meter=\"%2\"").arg(rhythmVoice).arg(XmlWriter::xmlString(rhythmMeter)));
+            xml << rhythmPattern.toBase64() << '\n';
+            xml.etag();
+            }
       if (untranslatedElement)
             untranslatedElement->write(xml);
       else
@@ -270,6 +275,11 @@ bool PaletteCell::read(XmlReader& e)
                   mag = e.readDouble();
             else if (s == "tag")
                   tag = e.readElementText();
+            else if (s == "rhythmPattern") {
+                  rhythmVoice = e.intAttribute("voice", -1);
+                  rhythmMeter = e.attribute("meter");
+                  rhythmPattern = QByteArray::fromBase64(e.readElementText().trimmed().toLatin1());
+                  }
 
             // added on palettes rework
             // TODO: remove or leave to switch from using attributes later?
@@ -767,7 +777,10 @@ int PalettePanel::findPaletteCell(const PaletteCell& cell, bool matchName) const
             const Element* exElement = localCell.element.get();
             if (exElement && !isSame(*exElement, *el))
                   continue;
-            if (localCell.tag != cell.tag
+            if (localCell.rhythmPattern != cell.rhythmPattern
+                  || localCell.rhythmMeter != cell.rhythmMeter
+                  || localCell.rhythmVoice != cell.rhythmVoice
+                  || localCell.tag != cell.tag
                   || localCell.drawStaff != cell.drawStaff
                   || localCell.xoffset != cell.xoffset
                   || localCell.yoffset != cell.yoffset

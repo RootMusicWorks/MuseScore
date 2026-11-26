@@ -26,6 +26,11 @@
 #include "palettecelldialog.h"
 #include "palettewidget.h"
 #include "paletteworkspace.h"
+#include "libmscore/score.h"
+#include "libmscore/text.h"
+
+#include <QInputDialog>
+#include <QLineEdit>
 #include "libmscore/chordbracket.h"
 #include "timedialog.h"
 
@@ -568,6 +573,39 @@ bool UserPaletteController::canEdit(const QModelIndex& index) const
       return model()->data(index, PaletteTreeModel::EditableRole).toBool();
       }
 
+void UserPaletteController::registerRhythmPattern(const QModelIndex& index)
+      {
+      if (!index.isValid() || !canEdit(index))
+            return;
+
+      Score* score = mscore->currentScore();
+      PaletteCell cell;
+      if (score)
+            cell.rhythmPattern = score->rhythmPattern(&cell.rhythmMeter, &cell.rhythmVoice);
+      if (cell.rhythmPattern.isEmpty()) {
+            QMessageBox::information(mscore, tr("Rhythm Pattern"),
+                  tr("Select one to four complete measures on a single staff with notes or rests in one voice."));
+            return;
+            }
+
+      const QPersistentModelIndex paletteIndex(convertProxyIndex(index, _userPalette));
+      bool accepted = false;
+      cell.name = QInputDialog::getText(mscore, tr("Register Rhythm Pattern"),
+            tr("Pattern name:"), QLineEdit::Normal, QString(), &accepted).trimmed();
+      if (!accepted || cell.name.isEmpty())
+            return;
+
+      Text* label = new Text(gscore);
+      label->setPlainText(QString::fromUtf8("♩"));
+      cell.element.reset(label);
+      cell.custom = true;
+      QMimeData mimeData;
+      mimeData.setData(PaletteCell::mimeDataFormat, cell.mimeData());
+      if (!paletteIndex.isValid() || !_userPalette->data(paletteIndex, PaletteTreeModel::EditableRole).toBool()
+          || !_userPalette->dropMimeData(&mimeData, Qt::CopyAction, _userPalette->rowCount(paletteIndex), 0, paletteIndex))
+            QMessageBox::information(mscore, tr("Rhythm Pattern"), tr("Could not add the pattern to this palette."));
+      }
+
 //---------------------------------------------------------
 //   UserPaletteController::applyPaletteElement
 //---------------------------------------------------------
@@ -575,6 +613,14 @@ bool UserPaletteController::canEdit(const QModelIndex& index) const
 bool UserPaletteController::applyPaletteElement(const QModelIndex& index, Qt::KeyboardModifiers modifiers)
       {
       const PaletteCell* cell = model()->data(index, PaletteTreeModel::PaletteCellRole).value<const PaletteCell*>();
+      if (cell && cell->rhythmVoice >= 0) {
+            Score* score = mscore->currentScore();
+            if (score && score->applyRhythmPattern(cell->rhythmPattern, cell->rhythmMeter, cell->rhythmVoice))
+                  return true;
+            QMessageBox::information(mscore, tr("Rhythm Pattern"),
+                  tr("Select the same number of complete measures on one staff, with matching time signatures and measure lengths. The target voice must be free of lyrics, cross-staff notes, and lines anchored to notes or chords."));
+            return false;
+            }
       if (cell && cell->element)
             return Palette::applyPaletteElement(cell->element.get(), modifiers);
       return false;

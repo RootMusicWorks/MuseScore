@@ -876,14 +876,17 @@ static Fraction firstElementInTrack(Segment* startSeg, Segment* endSeg, int trac
 //   staffMimeData
 //---------------------------------------------------------
 
-QByteArray Selection::staffMimeData() const
+QByteArray Selection::staffMimeData(int rhythmVoice) const
       {
       QBuffer buffer;
       buffer.open(QIODevice::WriteOnly);
       XmlWriter xml(score(), &buffer);
       xml.header();
       xml.setClipboardmode(true);
-      xml.setFilter(selectionFilter());
+      if (rhythmVoice < 0)
+            xml.setFilter(selectionFilter());
+      else
+            xml.setRhythmPattern(tickStart(), tickEnd());
 
       Fraction ticks  = tickEnd() - tickStart();
       int staves = staffEnd() - staffStart();
@@ -911,7 +914,8 @@ QByteArray Selection::staffMimeData() const
                   xml.tag("transposeDiatonic", interval.diatonic);
             xml.stag("voiceOffset");
             for (int voice = 0; voice < VOICES; voice++) {
-                  if (hasElementInTrack(seg1, seg2, startTrack + voice)
+                  if ((rhythmVoice < 0 || voice == rhythmVoice)
+                     && hasElementInTrack(seg1, seg2, startTrack + voice)
                      && xml.canWriteVoice(voice)) {
                         Fraction offset = firstElementInTrack(seg1, seg2, startTrack+voice) - tickStart();
                         xml.tag(QString("voice id=\"%1\"").arg(voice), offset.ticks());
@@ -919,7 +923,7 @@ QByteArray Selection::staffMimeData() const
                   }
             xml.etag(); // </voiceOffset>
             xml.setCurTrack(startTrack);
-            _score->writeSegments(xml, startTrack, endTrack, seg1, seg2, false, false);
+            _score->writeSegments(xml, startTrack, endTrack, seg1, seg2, false, false, rhythmVoice);
             xml.etag();
             }
 

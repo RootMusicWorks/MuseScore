@@ -1245,7 +1245,7 @@ static bool writeVoiceMove(XmlWriter& xml, Segment* seg, const Fraction& startTi
 //---------------------------------------------------------
 
 void Score::writeSegments(XmlWriter& xml, int strack, int etrack,
-   Segment* sseg, Segment* eseg, bool writeSystemElements, bool forceTimeSig)
+   Segment* sseg, Segment* eseg, bool writeSystemElements, bool forceTimeSig, int rhythmVoice)
       {
       Fraction startTick = xml.curTick();
       Fraction endTick   = eseg ? eseg->tick() : lastMeasure()->endTick();
@@ -1281,7 +1281,7 @@ void Score::writeSegments(XmlWriter& xml, int strack, int etrack,
       for (auto i : sl) {
             Spanner* s = i.value;
 #endif
-            if (s->generated() || !xml.canWrite(s))
+            if (rhythmVoice >= 0 || s->generated() || !xml.canWrite(s))
                   continue;
             // don't write voltas to clipboard
             if (clip && s->isVolta())
@@ -1291,7 +1291,7 @@ void Score::writeSegments(XmlWriter& xml, int strack, int etrack,
 
       int lastTrackWritten = strack - 1; // for counting necessary <voice> tags
       for (int track = strack; track < etrack; ++track) {
-            if (!xml.canWriteVoice(track))
+            if (!xml.canWriteVoice(track) || (rhythmVoice >= 0 && track % VOICES != rhythmVoice))
                   continue;
 
             bool voiceTagWritten = false;
@@ -1303,7 +1303,7 @@ void Score::writeSegments(XmlWriter& xml, int strack, int etrack,
             for (Segment* segment = sseg; segment && segment != eseg; segment = segment->next1()) {
                   if (!segment->enabled())
                         continue;
-                  if (track == 0)
+                  if (track == 0 && rhythmVoice < 0)
                         segment->setWritten(false);
                   Element* e = segment->element(track);
 
@@ -1325,7 +1325,7 @@ void Score::writeSegments(XmlWriter& xml, int strack, int etrack,
                               }
                         }
                   for (Element* e1 : segment->annotations()) {
-                        if (e1->track() != track || e1->generated() || (e1->systemFlag() && !writeSystemElements))
+                        if (rhythmVoice >= 0 || e1->track() != track || e1->generated() || (e1->systemFlag() && !writeSystemElements))
                               continue;
                         if (needMove) {
                               voiceTagWritten |= writeVoiceMove(xml, segment, startTick, track, &lastTrackWritten);
@@ -1366,7 +1366,7 @@ void Score::writeSegments(XmlWriter& xml, int strack, int etrack,
                               }
                         }
 
-                  if (!e || !xml.canWrite(e))
+                  if (!e || !xml.canWrite(e) || (rhythmVoice >= 0 && !e->isChordRest()))
                         continue;
                   if (e->generated())
                         continue;
@@ -1410,7 +1410,7 @@ void Score::writeSegments(XmlWriter& xml, int strack, int etrack,
                         cr->writeTupletEnd(xml);
                         }
 
-                  if (!(e->isRest() && toRest(e)->isGap()))
+                  if (rhythmVoice < 0 && !(e->isRest() && toRest(e)->isGap()))
                         segment->write(xml);    // write only once
                   if (forceTimeSig) {
                         if (segment->segmentType() == SegmentType::KeySig)

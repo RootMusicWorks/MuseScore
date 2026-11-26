@@ -38,6 +38,9 @@ struct PaletteCell {
       std::unique_ptr<Element> untranslatedElement;
       QString name;           // used for tool tip
       QString tag;
+      QByteArray rhythmPattern;
+      QString rhythmMeter;
+      int rhythmVoice { -1 };
 
       bool drawStaff { false };
       double x       { 0.0   }; // TODO: remove?

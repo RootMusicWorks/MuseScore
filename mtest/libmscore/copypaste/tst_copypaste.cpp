@@ -11,13 +11,17 @@
 //=============================================================================
 
 #include <QtTest/QtTest>
+#include <algorithm>
+#include <memory>
 
 #include "libmscore/chord.h"
 #include "libmscore/chordrest.h"
 #include "libmscore/durationtype.h"
 #include "libmscore/measure.h"
+#include "libmscore/note.h"
 #include "libmscore/score.h"
 #include "libmscore/segment.h"
+#include "libmscore/tie.h"
 #include "libmscore/xml.h"
 
 #include "mtest/testutils.h"
@@ -44,6 +48,8 @@ class TestCopyPaste : public QObject, public MTest
 
    private slots:
       void initTestCase();
+      void rhythmPattern();
+      void rhythmPatternTies();
       void copypaste01() { copypaste("01"); }       // start slur
       void copypaste02() { copypaste("02"); }       // end slur
       void copypaste03() { copypaste("03"); }       // slur
@@ -100,6 +106,83 @@ class TestCopyPaste : public QObject, public MTest
 void TestCopyPaste::initTestCase()
       {
       initMTest();
+      }
+
+void TestCopyPaste::rhythmPattern()
+      {
+      std::unique_ptr<MasterScore> score(readScore(DIR + "copypaste19.mscx"));
+      QVERIFY(score);
+      Measure* restBar = score->firstMeasure();
+      Measure* source = restBar->nextMeasure();
+      Measure* emptyTarget = source->nextMeasure();
+      Measure* annotatedTarget = emptyTarget->nextMeasure();
+
+      QString meter;
+      int voice = -1;
+      score->select(source, SelectType::SINGLE, 0);
+      const QByteArray notes = score->rhythmPattern(&meter, &voice);
+      QVERIFY(!notes.isEmpty());
+      QVERIFY(!notes.contains("<Harmony>"));
+      QCOMPARE(voice, 0);
+
+      score->select(emptyTarget, SelectType::SINGLE, 0);
+      QVERIFY(!score->applyRhythmPattern(notes, QString("3/4:3/4"), voice));
+      QVERIFY(emptyTarget->first(SegmentType::ChordRest)->element(0)->isRest());
+      QVERIFY(score->applyRhythmPattern(notes, meter, voice));
+      auto* chord = toChord(emptyTarget->first(SegmentType::ChordRest)->element(0));
+      QCOMPARE(chord->upNote()->pitch(), 72);
+      QVERIFY(chord->segment()->annotations().empty());
+
+      score->select(restBar, SelectType::SINGLE, 0);
+      const QByteArray rest = score->rhythmPattern(&meter, &voice);
+      QVERIFY(!rest.isEmpty());
+
+      score->select(annotatedTarget, SelectType::SINGLE, 0);
+      Segment* first = annotatedTarget->first(SegmentType::ChordRest);
+      Segment* second = first->next(SegmentType::ChordRest);
+      QVERIFY(second);
+      QVERIFY(!second->annotations().empty());
+      Element* harmony = second->annotations().front();
+      QVERIFY(score->applyRhythmPattern(rest, meter, voice));
+      QVERIFY(first->element(0)->isRest());
+      QVERIFY(!second->element(0));
+      QVERIFY(std::find(second->annotations().begin(), second->annotations().end(), harmony) != second->annotations().end());
+
+      score->undoRedo(true, nullptr);
+      QVERIFY(first->element(0)->isChord());
+      QVERIFY(second->element(0)->isChord());
+      QVERIFY(std::find(second->annotations().begin(), second->annotations().end(), harmony) != second->annotations().end());
+
+      score->undoRedo(false, nullptr);
+      QVERIFY(first->element(0)->isRest());
+      QVERIFY(!second->element(0));
+      QVERIFY(std::find(second->annotations().begin(), second->annotations().end(), harmony) != second->annotations().end());
+      }
+
+void TestCopyPaste::rhythmPatternTies()
+      {
+      std::unique_ptr<MasterScore> score(readScore(DIR + "copypaste06.mscx"));
+      QVERIFY(score);
+      Measure* source = score->firstMeasure()->nextMeasure();
+      Measure* target = score->lastMeasure();
+
+      QString meter;
+      int voice = -1;
+      score->select(source, SelectType::SINGLE, 0);
+      const QByteArray data = score->rhythmPattern(&meter, &voice);
+      QVERIFY(!data.isEmpty());
+      score->select(target, SelectType::SINGLE, 0);
+      QVERIFY(score->applyRhythmPattern(data, meter, voice));
+
+      Segment* second = target->first(SegmentType::ChordRest)->next(SegmentType::ChordRest);
+      QVERIFY(second);
+      Segment* third = second->next(SegmentType::ChordRest);
+      QVERIFY(third);
+      Note* start = toChord(second->element(0))->upNote();
+      Note* end = toChord(third->element(0))->upNote();
+      QVERIFY(start->tieFor());
+      QCOMPARE(start->tieFor(), end->tieBack());
+      QCOMPARE(start->tieFor()->endNote(), end);
       }
 
 //---------------------------------------------------------

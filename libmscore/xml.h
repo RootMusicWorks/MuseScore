@@ -228,6 +228,9 @@ class XmlWriter : public QTextStream {
       int _curTrack        { -1 };
       int _trackDiff       { 0 };       // saved track is curTrack-trackDiff
 
+      bool _rhythmPattern  { false };
+      Fraction _rhythmStart;
+      Fraction _rhythmEnd;
       bool _clipboardmode  { false };   // used to modify write() behaviour
       bool _excerptmode    { false };   // true when writing a part
       bool _writeOmr       { true };    // false if writing into *.msc file
@@ -245,6 +248,9 @@ class XmlWriter : public QTextStream {
    public:
       XmlWriter(Score*);
       XmlWriter(Score* s, QIODevice* dev);
+
+      bool rhythmPattern() const { return _rhythmPattern; }
+      void setRhythmPattern(Fraction start, Fraction end) { _rhythmPattern = true; _rhythmStart = start; _rhythmEnd = end; }
 
       Fraction curTick() const            { return _curTick; }
       void setCurTick(const Fraction& v)  { _curTick   = v; }

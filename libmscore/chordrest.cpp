@@ -176,8 +176,10 @@ void ChordRest::writeProperties(XmlWriter& xml) const
             //xml.tagE("duration z=\"%d\" n=\"%d\"", ticks().numerator(), ticks().denominator());
             }
 
-      for (Lyrics* lyrics : _lyrics)
-            lyrics->write(xml);
+      if (!xml.rhythmPattern()) {
+            for (Lyrics* lyrics : _lyrics)
+                  lyrics->write(xml);
+            }
 
       const int curTick = xml.curTick().ticks();
 

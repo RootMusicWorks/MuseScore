@@ -10,6 +10,8 @@
 //  the file LICENCE.GPL
 //=============================================================================
 
+#include "note.h"
+#include "tie.h"
 #include "property.h"
 #include "scoreElement.h"
 #include "xml.h"
@@ -416,6 +418,16 @@ bool XmlWriter::canWrite(const Element* e) const
       {
       if (!_clipboardmode)
             return true;
+      if (_rhythmPattern && e->isSpanner()) {
+            if (!e->isTie())
+                  return false;
+            const auto* tie = static_cast<const Tie*>(e);
+            const Note* start = tie->startNote();
+            const Note* end = tie->endNote();
+            if (!start || !end || start->track() != end->track()
+                || start->tick() < _rhythmStart || end->tick() >= _rhythmEnd)
+                  return false;
+            }
       return _filter.canSelect(e);
       }
 
