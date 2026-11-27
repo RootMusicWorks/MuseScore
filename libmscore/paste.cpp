@@ -138,15 +138,23 @@ QByteArray Score::rhythmPattern(QString* meter, int* voice) const
       return selection().staffMimeData(*voice);
       }
 
-bool Score::applyRhythmPattern(const QByteArray& data, const QString& meter, int voice)
+bool Score::applyRhythmPattern(const QByteArray& data, const QString& meter, int voice, QString* error)
       {
-      if (readOnly() || noteEntryMode() || voice < 0 || voice >= VOICES || data.isEmpty() || undoStack()->active())
+      const auto fail = [error](const QString& message) {
+            if (error)
+                  *error = message;
             return false;
+            };
+
+      if (readOnly() || noteEntryMode() || voice < 0 || voice >= VOICES || data.isEmpty() || undoStack()->active())
+            return fail(tr("Switch to normal mode and select the target measures."));
 
       QString targetMeter;
       const auto measures = rhythmMeasures(this, &targetMeter);
-      if (measures.isEmpty() || targetMeter != meter)
-            return false;
+      if (measures.isEmpty())
+            return fail(tr("Select one to four complete measures on one staff."));
+      if (targetMeter != meter)
+            return fail(tr("The selected measures do not match the pattern. Expected %1. Selected %2.").arg(meter, targetMeter));
 
       const int staffIdx = selection().staffStart();
       const int track = staffIdx * VOICES + voice;
@@ -155,10 +163,10 @@ bool Score::applyRhythmPattern(const QByteArray& data, const QString& meter, int
 
       XmlReader header(data);
       if (!header.readNextStartElement() || header.name() != "StaffList")
-            return false;
+            return fail(tr("The saved rhythm pattern could not be read."));
       const Fraction length = Fraction::fromString(header.attribute("len"));
       if (!length.isValid() || length != end - start)
-            return false;
+            return fail(tr("The saved rhythm pattern has an inconsistent length."));
 
       // Segment annotations can stay at their original ticks. Span elements
       // anchored directly to notes or chords need those objects to survive.
@@ -167,7 +175,7 @@ bool Score::applyRhythmPattern(const QByteArray& data, const QString& meter, int
             if (!spanner->isTie() && (spanner->anchor() == Spanner::Anchor::CHORD || spanner->anchor() == Spanner::Anchor::NOTE)
                 && ((spanner->track() == track && spanner->tick() >= start && spanner->tick() < end)
                     || (spanner->effectiveTrack2() == track && spanner->tick2() >= start && spanner->tick2() < end)))
-                  return false;
+                  return fail(tr("The target voice contains a line attached to a note or chord."));
             }
 
       QList<ChordRest*> replace;
@@ -177,7 +185,7 @@ bool Score::applyRhythmPattern(const QByteArray& data, const QString& meter, int
                   if (!cr)
                         continue;
                   if (!cr->lyrics().empty() || (cr->isChord() && toChord(cr)->staffMove()))
-                        return false;
+                        return fail(tr("The target voice contains lyrics or cross-staff notes."));
                   replace.append(cr);
                   }
             }
@@ -217,7 +225,10 @@ bool Score::applyRhythmPattern(const QByteArray& data, const QString& meter, int
             _selection.setRangeTicks(start, end, staffIdx, staffIdx + 1);
       endCmd(!ok);
       MScore::setError(MS_NO_ERROR);
-      return ok;
+      if (!ok)
+            return fail(tr("The rhythm pattern could not be inserted (XML line %1, element %2). The score was restored.")
+                        .arg(reader.lineNumber()).arg(reader.name().toString()));
+      return true;
       }
 
 //---------------------------------------------------------
@@ -318,7 +329,8 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale,
                                           return false;
                                     voiceOffset[voiceId] = e.readInt();
                                     }
-                              e.readNext();
+                              if (rhythmVoice < 0)
+                                    e.readNext();
                               if (rhythmVoice < 0 && !makeGap1(dstTick, dstStaffIdx, tickLen, voiceOffset)) {
                                     qDebug("cannot make gap in staff %d at tick %d", dstStaffIdx, dstTick.ticks());
                                     done = true; // break main loop, cannot make gap
@@ -328,10 +340,20 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale,
                         else if (tag == "location") {
                               Location loc = Location::relative();
                               loc.read(e);
-                              e.setLocation(loc);
-                              if (rhythmVoice >= 0 && (e.track() != dstStaff * VOICES + rhythmVoice
-                                    || e.tick() < dstTick || e.tick() >= dstTick + tickLen))
-                                    return false;
+                              if (rhythmVoice >= 0) {
+                                    // StaffList locations are relative deltas. Advance the
+                                    // exact fraction, including when the source starts later
+                                    // in its score than the destination does.
+                                    if (!loc.frac().isValid())
+                                          return false;
+                                    e.incTick(loc.frac());
+                                    e.setTrack(e.track() + loc.track() - (dstStaff - staffStart) * VOICES);
+                                    if (e.track() != dstStaff * VOICES + rhythmVoice
+                                        || e.tick() < dstTick || e.tick() >= dstTick + tickLen)
+                                          return false;
+                                    }
+                              else
+                                    e.setLocation(loc);
                               }
                         else if (tag == "Tuplet") {
                               Tuplet* oldTuplet = tuplet;

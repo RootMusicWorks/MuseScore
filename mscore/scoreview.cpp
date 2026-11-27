@@ -10,6 +10,7 @@
 //  the file LICENCE.GPL
 //=============================================================================
 
+#include "palette/paletteworkspace.h"
 #include "breaksdialog.h"
 #include "continuouspanel.h"
 #include "drumroll.h"
@@ -2426,6 +2427,9 @@ void ScoreView::cmd(const char* s)
                   }},
             {{"rehearsalmark-text"}, [](ScoreView* cv, const QByteArray&) {
                   cv->cmdAddText(Tid::REHEARSAL_MARK);
+                  }},
+            {{"rhythm-pattern-library"}, [](ScoreView*, const QByteArray&) {
+                  mscore->getPaletteWorkspace()->showRhythmPatternLibrary();
                   }},
             {{"rehearsalmark-preset"}, [](ScoreView* cv, const QByteArray&) {
                   cv->cmdChooseRehearsalMark();

@@ -951,7 +951,7 @@ class Score : public QObject, public ScoreElement {
       void cmdPaste(const QMimeData* ms, MuseScoreView* view, Fraction scale = Fraction(1, 1));
       bool pasteStaff(XmlReader&, Segment* dst, int staffIdx, Fraction scale = Fraction(1, 1), int rhythmVoice = -1);
       QByteArray rhythmPattern(QString* meter, int* voice) const;
-      bool applyRhythmPattern(const QByteArray&, const QString& meter, int voice);
+      bool applyRhythmPattern(const QByteArray&, const QString& meter, int voice, QString* error = nullptr);
       void readAddConnector(ConnectorInfoReader* info, bool pasteMode) override;
       void pasteSymbols(XmlReader& e, ChordRest* dst);
       void renderMidi(EventMap* events, const SynthesizerState& synthState);

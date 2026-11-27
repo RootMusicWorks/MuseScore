@@ -64,10 +64,19 @@ Item {
         onAddCustomPaletteRequested: paletteTree.insertCustomPalette(0);
     }
 
+    Button {
+        id: rhythmLibraryButton
+        text: qsTr("Rhythm Pattern Library…")
+        anchors.top: palettesWidgetHeader.bottom
+        anchors.left: palettesWidgetHeader.left
+        anchors.right: palettesWidgetHeader.right
+        onClicked: palettesWidget.paletteWorkspace.showRhythmPatternLibrary()
+    }
+
     ToolSeparator {
         id: separator
         orientation: Qt.Horizontal
-        anchors.top: palettesWidgetHeader.bottom
+        anchors.top: rhythmLibraryButton.bottom
         width: parent.width
     }
 

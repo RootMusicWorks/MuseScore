@@ -19,6 +19,7 @@
 #include "libmscore/durationtype.h"
 #include "libmscore/measure.h"
 #include "libmscore/note.h"
+#include "libmscore/rest.h"
 #include "libmscore/score.h"
 #include "libmscore/segment.h"
 #include "libmscore/tie.h"
@@ -50,6 +51,8 @@ class TestCopyPaste : public QObject, public MTest
       void initTestCase();
       void rhythmPattern();
       void rhythmPatternTies();
+      void rhythmPatternTwoMeasureSlash_data();
+      void rhythmPatternTwoMeasureSlash();
       void copypaste01() { copypaste("01"); }       // start slur
       void copypaste02() { copypaste("02"); }       // end slur
       void copypaste03() { copypaste("03"); }       // slur
@@ -183,6 +186,79 @@ void TestCopyPaste::rhythmPatternTies()
       QVERIFY(start->tieFor());
       QCOMPARE(start->tieFor(), end->tieBack());
       QCOMPARE(start->tieFor()->endNote(), end);
+      }
+
+void TestCopyPaste::rhythmPatternTwoMeasureSlash_data()
+      {
+      QTest::addColumn<QByteArray>("separator");
+      QTest::newRow("legacy-workspace") << QByteArray("\n    ");
+      QTest::newRow("compact") << QByteArray();
+      }
+
+void TestCopyPaste::rhythmPatternTwoMeasureSlash()
+      {
+      QFETCH(QByteArray, separator);
+      std::unique_ptr<MasterScore> score(readScore(DIR + "copypaste19.mscx"));
+      QVERIFY(score);
+      Measure* first = score->firstMeasure();
+      Measure* second = first->nextMeasure();
+      // Prepare a two-bar range of full-measure rests, with the second
+      // measure's chord symbols left at their original beats.
+      QList<Element*> oldNotes;
+      for (Segment* seg = second->first(SegmentType::ChordRest); seg; seg = seg->next(SegmentType::ChordRest)) {
+            if (seg->element(0))
+                  oldNotes.append(seg->element(0));
+            }
+      score->startCmd();
+      for (Element* el : oldNotes)
+            score->undoRemoveElement(el);
+      auto* rest = new Rest(score.get());
+      rest->setTrack(0);
+      rest->setTicks(second->ticks());
+      rest->setDurationType(TDuration(TDuration::DurationType::V_MEASURE));
+      score->undoAddCR(rest, second, second->tick());
+      score->endCmd();
+      score->deselectAll();
+
+      // Same rhythm and relocation as the reported TAB pattern. Compact
+      // XML also exercises consecutive tags immediately after voiceOffset.
+      QByteArray pattern = "<StaffList version=\"3.02\" tick=\"31/1\" len=\"2/1\" staff=\"0\" staves=\"1\">"
+            "<Staff id=\"0\"><voiceOffset><voice id=\"0\">0</voice></voiceOffset>";
+      pattern += separator + "<location><fractions>31/1</fractions></location>";
+      auto chord = [&](const QByteArray& duration, const QByteArray& spanner = {}) {
+            pattern += "<Chord><durationType>" + duration + "</durationType><Note>" + spanner
+                        + "<pitch>40</pitch><tpc>18</tpc><head>slash</head><fixed>1</fixed>"
+                          "<fixedLine>5</fixedLine></Note></Chord>";
+            };
+      chord("quarter");
+      chord("quarter");
+      chord("quarter");
+      chord("eighth");
+      chord("eighth", "<Spanner type=\"Tie\"><Tie/><next><location><fractions>1/8</fractions></location></next></Spanner>");
+      chord("whole", "<Spanner type=\"Tie\"><prev><location><fractions>-1/8</fractions></location></prev></Spanner>");
+      pattern += "</Staff></StaffList>";
+
+      score->select(first, SelectType::SINGLE, 0);
+      score->select(second, SelectType::RANGE, 0);
+      QString error;
+      QVERIFY2(score->applyRhythmPattern(pattern, QStringLiteral("4/4:1/1;4/4:1/1"), 0, &error), qPrintable(error));
+
+      const Fraction lastEighth = second->tick() - Fraction(1, 8);
+      Segment* onset = score->tick2segment(lastEighth);
+      Segment* nextBar = second->first(SegmentType::ChordRest);
+      QVERIFY(onset && onset->element(0) && onset->element(0)->isChord());
+      QVERIFY(nextBar && nextBar->element(0) && nextBar->element(0)->isChord());
+      auto* start = toChord(onset->element(0));
+      auto* end = toChord(nextBar->element(0));
+      QVERIFY(start->slash());
+      QCOMPARE(end->upNote()->pitch(), 40);
+      QVERIFY(start->upNote()->tieFor());
+      QCOMPARE(start->upNote()->tieFor()->endNote(), end->upNote());
+      score->undoRedo(true, nullptr);
+      QVERIFY(first->first(SegmentType::ChordRest)->element(0)->isRest());
+      QVERIFY(second->first(SegmentType::ChordRest)->element(0)->isRest());
+      score->undoRedo(false, nullptr);
+      QVERIFY(second->first(SegmentType::ChordRest)->element(0)->isChord());
       }
 
 //---------------------------------------------------------

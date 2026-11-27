@@ -2397,6 +2397,13 @@ Shortcut Shortcut::_sc[] = {
       {
          MsWidget::SCORE_TAB,
          STATE_NORMAL,
+         "rhythm-pattern-library",
+         QT_TRANSLATE_NOOP("action","Rhythm Pattern Library..."),
+         QT_TRANSLATE_NOOP("action","Open the rhythm pattern library")
+         },
+      {
+         MsWidget::SCORE_TAB,
+         STATE_NORMAL,
          "rehearsalmark-preset",
          QT_TRANSLATE_NOOP("action","Choose Rehearsal Mark..."),
          QT_TRANSLATE_NOOP("action","Choose a rehearsal mark for the first selected measure")

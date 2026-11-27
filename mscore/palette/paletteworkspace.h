@@ -95,7 +95,6 @@ class AbstractPaletteController : public QObject {
       Q_INVOKABLE virtual void editPaletteProperties(const QModelIndex& index) { Q_UNUSED(index); }
       Q_INVOKABLE virtual void editCellProperties(const QModelIndex& index) { Q_UNUSED(index); }
 
-      Q_INVOKABLE virtual void registerRhythmPattern(const QModelIndex& index) { Q_UNUSED(index); }
       Q_INVOKABLE virtual bool applyPaletteElement(const QModelIndex& index, Qt::KeyboardModifiers modifiers) { Q_UNUSED(index); Q_UNUSED(modifiers); return false; }
 
       Q_INVOKABLE Ms::PaletteElementEditor* elementEditor(const QModelIndex& index);
@@ -159,7 +158,6 @@ class UserPaletteController : public AbstractPaletteController {
 
       bool canEdit(const QModelIndex&) const override;
 
-      void registerRhythmPattern(const QModelIndex& index) override;
       bool applyPaletteElement(const QModelIndex& index, Qt::KeyboardModifiers modifiers) override;
       };
 
@@ -217,6 +215,7 @@ class PaletteWorkspace : public QObject {
       Q_INVOKABLE Ms::FilterPaletteTreeModel* poolPaletteModel(const QModelIndex& index);
       Q_INVOKABLE Ms::AbstractPaletteController* poolPaletteController(Ms::FilterPaletteTreeModel*, const QModelIndex& rootIndex);
 
+      Q_INVOKABLE void showRhythmPatternLibrary();
       PaletteTreeModel* userPaletteModel() { return userPalette; }
       void ensureVisibleChordBrackets();
 

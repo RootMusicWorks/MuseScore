@@ -643,6 +643,10 @@
     <seq>Ctrl+K</seq>
     </SC>
   <SC>
+    <key>rhythm-pattern-library</key>
+    <seq>Ctrl+Alt+Shift+L</seq>
+    </SC>
+  <SC>
     <key>rehearsalmark-text</key>
     <seq>Ctrl+M</seq>
     </SC>
