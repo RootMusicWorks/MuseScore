@@ -673,6 +673,15 @@ bool Score::pasteStaff(XmlReader& e, Segment* dst, int dstStaff, Fraction scale,
                         sp->undoChangeProperty(Pid::SPANNER_TICKS, sp->ticks() * scale);
                         }
                   }
+            if (rhythmVoice >= 0) {
+                  // A rhythm pattern has one StaffList document. Stop on
+                  // its closing tag and let the XML reader validate the tail.
+                  if (!e.isEndElement() || e.name() != "StaffList")
+                        return false;
+                  while (!e.atEnd())
+                        e.readNext();
+                  break;
+                  }
             }
 
       if (rhythmVoice >= 0 && (!rhythmContentPasted || done || e.hasError()))

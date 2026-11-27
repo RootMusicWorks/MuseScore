@@ -52,6 +52,7 @@ struct Pattern {
       QByteArray strings;
       int voice = -1;
       QImage preview;
+      QString previewError;
 
       QStringList bars() const { return meter.split(';'); }
 
@@ -75,8 +76,9 @@ struct Pattern {
       bool valid() const { return voice >= 0 && voice < VOICES && !staffList.isEmpty() && !meter.isEmpty(); }
       };
 
-static QImage renderPattern(const Pattern& pattern)
+static QImage renderPattern(Pattern& pattern)
       {
+      pattern.previewError = QCoreApplication::translate("RhythmPatternLibrary", "The pattern data is invalid.");
       if (!pattern.valid() || pattern.bars().size() > 4)
             return {};
 
@@ -173,15 +175,21 @@ static QImage renderPattern(const Pattern& pattern)
                       && MScore::_error == MS_NO_ERROR;
       score.undoStack()->endMacro(false);
       MScore::setError(previousError);
-      if (!ok)
+      if (!ok) {
+            pattern.previewError = QCoreApplication::translate("RhythmPatternLibrary",
+                  "The preview score could not read the pattern (line %1, element %2).")
+                  .arg(reader.lineNumber()).arg(reader.name().toString());
             return {};
+            }
 
-      score.setPrinting(true);
+      pattern.previewError = QCoreApplication::translate("RhythmPatternLibrary", "The preview has no drawable notation.");
       score.doLayout();
-      if (score.pages().isEmpty())
+      score.setPrinting(true);
+      QList<Element*> elements;
+      for (Page* page : score.pages())
+            elements.append(page->elements());
+      if (elements.isEmpty())
             return {};
-
-      QList<Element*> elements = score.pages().front()->elements();
       std::stable_sort(elements.begin(), elements.end(), elementLessThan);
       QRectF bounds;
       for (const Element* element : elements) {
@@ -204,6 +212,7 @@ static QImage renderPattern(const Pattern& pattern)
                   element->drawAt(&painter, element->pagePos());
             }
       painter.end();
+      pattern.previewError.clear();
       return image;
       }
 
@@ -302,7 +311,7 @@ static void importLegacy(Library& library, PaletteTreeModel* model)
                   for (int col = 0; col < model->rowCount(panel); ++col) {
                         const auto cell = model->findCell(model->index(col, 0, panel));
                         if (cell)
-                              library.import({cell->name, cell->rhythmMeter, cell->rhythmPattern, {}, {}, cell->rhythmVoice, {}});
+                              library.import({cell->name, cell->rhythmMeter, cell->rhythmPattern, {}, {}, cell->rhythmVoice, {}, {}});
                         }
                   }
             }
@@ -322,7 +331,7 @@ static void importLegacy(Library& library, PaletteTreeModel* model)
                   else if (xml.name() == "rhythmPattern" && !cellName.isEmpty()) {
                         const int voice = xml.intAttribute("voice", -1);
                         const QString meter = xml.attribute("meter");
-                        library.import({cellName, meter, QByteArray::fromBase64(xml.readElementText().trimmed().toLatin1()), {}, {}, voice, {}});
+                        library.import({cellName, meter, QByteArray::fromBase64(xml.readElementText().trimmed().toLatin1()), {}, {}, voice, {}, {}});
                         }
                   }
             }
@@ -382,6 +391,8 @@ void PaletteWorkspace::showRhythmPatternLibrary()
       if (selected.valid()) {
             selected.preview = renderPattern(selected);
             auto* preview = new Preview(selected.preview, &dialog);
+            preview->setAttribute(Qt::WA_TransparentForMouseEvents, false);
+            preview->setToolTip(selected.previewError);
             preview->setMinimumHeight(100);
             layout->addWidget(preview);
             }
@@ -463,7 +474,13 @@ void PaletteWorkspace::showRhythmPatternLibrary()
                   table->setItem(row, 2, new QTableWidgetItem(p.timeSignatures()));
                   if (p.preview.isNull())
                         p.preview = renderPattern(p);
-                  table->setCellWidget(row, 3, new Preview(p.preview, table));
+                  if (p.preview.isNull()) {
+                        auto* unavailable = new QTableWidgetItem(p.previewError);
+                        unavailable->setToolTip(p.previewError);
+                        table->setItem(row, 3, unavailable);
+                        }
+                  else
+                        table->setCellWidget(row, 3, new Preview(p.preview, table));
                   if (i == keep)
                         table->selectRow(row);
                   }

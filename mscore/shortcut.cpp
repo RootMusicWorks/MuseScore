@@ -4698,6 +4698,7 @@ void Shortcut::load()
             qDebug("read shortcuts from <%s>", qPrintable(f.fileName()));
 
       XmlReader e(&f);
+      bool hasRhythmLibraryEntry = false;
 
       while (e.readNextStartElement()) {
             if (e.name() == "Shortcuts") {
@@ -4708,6 +4709,8 @@ void Shortcut::load()
                                     const QStringRef& tag(e.name());
                                     if (tag == "key") {
                                           QString val(e.readElementText());
+                                          if (val == "rhythm-pattern-library")
+                                                hasRhythmLibraryEntry = true;
                                           sc = getShortcut(qPrintable(val));
                                           if (!sc) { // shortcut not found
                                                 if (!(!strcmp(qPrintable(val), "toggle-feedback")
@@ -4749,6 +4752,21 @@ void Shortcut::load()
           && manualMark->_keys.removeAll(chooseMarkKey) > 0)
             presetMark->_keys.append(chooseMarkKey);
 #endif
+      // Existing user shortcut files predate this action. Respect an explicit
+      // empty entry and leave the default free if the user already uses it.
+      const QKeySequence rhythmKey(Qt::CTRL | Qt::ALT | Qt::SHIFT | Qt::Key_L);
+      if (!hasRhythmLibraryEntry) {
+            bool inUse = false;
+            for (const Shortcut& sc : _sc) {
+                  if (sc._keys.contains(rhythmKey)
+                      || QKeySequence::keyBindings(sc._standardKey).contains(rhythmKey)) {
+                        inUse = true;
+                        break;
+                        }
+                  }
+            if (!inUse)
+                  getShortcut("rhythm-pattern-library")->_keys.append(rhythmKey);
+            }
       source = f.fileName();
       dirty = false;
       }
