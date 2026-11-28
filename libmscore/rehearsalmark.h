@@ -17,6 +17,8 @@
 
 namespace Ms {
 
+class Staff;
+
 //---------------------------------------------------------
 //   @@ RehearsalMark
 //---------------------------------------------------------
@@ -26,13 +28,14 @@ class RehearsalMark final : public TextBase  {
       FramePlacement _framePlacement { FramePlacement::None };
       int _frameTabStaff { -1 }; // Index in the master score.
 
-      QRectF frameBounds() const;
-
    public:
       RehearsalMark(Score* score);
       void setNewInsertionDefaults();
       Spatium setupAutomaticFrame(Measure* selectedMeasure, int firstStaff, int endStaff);
       void layoutFrameOnTabStaff();
+      bool usesAutomaticFrame() const { return _framePlacement == FramePlacement::Automatic; }
+      Staff* frameTabStaff() const;
+      QRectF frameBounds() const;
       bool readProperties(XmlReader&) override;
       void write(XmlWriter&) const override;
 

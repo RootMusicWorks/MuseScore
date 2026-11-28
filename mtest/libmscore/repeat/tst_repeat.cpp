@@ -11,9 +11,12 @@
 //=============================================================================
 
 #include <QtTest/QtTest>
+#include <memory>
 #include "mtest/testutils.h"
 #include "libmscore/score.h"
 #include "libmscore/measure.h"
+#include "libmscore/jump.h"
+#include "libmscore/marker.h"
 #include "libmscore/repeatlist.h"
 
 #define DIR QString("libmscore/repeat/")
@@ -31,6 +34,7 @@ class TestRepeat : public QObject, public MTest
 
    private slots:
       void initTestCase();
+      void dynamicRepeatPlacement();
       void repeat01() { repeat("repeat01.mscx", "1;2;3; 2;3;4;5;6"); }        // repeat barline 2 measures ||: | :||
       void repeat02() { repeat("repeat02.mscx", "1;2; 2;3;4;5;6"); }          // repeat barline 1 measure ||: :||
       void repeat03() { repeat("repeat03.mscx", "1;2; 1;2;3;4;5;6"); }        // repeat barline end to start :||
@@ -131,6 +135,47 @@ class TestRepeat : public QObject, public MTest
 void TestRepeat::initTestCase()
       {
       initMTest();
+      }
+
+void TestRepeat::dynamicRepeatPlacement()
+      {
+      std::unique_ptr<MasterScore> score(readScore(DIR + "repeat32.mscx"));
+      QVERIFY(score);
+      Measure* measure = score->lastMeasure();
+      Jump* jump = nullptr;
+      for (Element* element : measure->el()) {
+            if (element->isJump())
+                  jump = toJump(element);
+            }
+      QVERIFY(jump);
+      QVERIFY(!jump->dynamicRepeatPlacement());
+      jump->setDynamicRepeatPlacement(true);
+      jump->setAutoplace(false);
+      jump->setPropertyFlags(Pid::OFFSET, PropertyFlags::UNSTYLED);
+      const QPointF offset(score->spatium(), score->spatium() * 2.0);
+      jump->setOffset(offset);
+      jump->setOffsetChanged(true);
+      score->doLayout();
+      QCOMPARE(jump->offset(), offset);
+      const qreal right = jump->pagePos().x() + jump->bbox().right() - offset.x();
+      QVERIFY(qAbs(right - measure->pagePos().x() - measure->width()) < 0.001);
+
+      std::unique_ptr<Element> restored(writeReadElement(jump));
+      QVERIFY(restored && restored->isJump());
+      QVERIFY(toJump(restored.get())->dynamicRepeatPlacement());
+      QCOMPARE(toJump(restored.get())->jumpTo(), QStringLiteral("segno"));
+      const qreal unit = jump->offsetIsSpatiumDependent() ? jump->score()->spatium() : 1.0;
+      const qreal restoredUnit = restored->offsetIsSpatiumDependent() ? restored->score()->spatium() : 1.0;
+      QVERIFY(qAbs(restored->offset().x() / restoredUnit - offset.x() / unit) < 0.001);
+      QVERIFY(qAbs(restored->offset().y() / restoredUnit - offset.y() / unit) < 0.001);
+
+      Marker marker(score.get());
+      marker.setMarkerType(Marker::Type::CODA);
+      marker.setDynamicRepeatPlacement(true);
+      std::unique_ptr<Element> restoredMarker(writeReadElement(&marker));
+      QVERIFY(restoredMarker && restoredMarker->isMarker());
+      QVERIFY(toMarker(restoredMarker.get())->dynamicRepeatPlacement());
+      QCOMPARE(toMarker(restoredMarker.get())->label(), QStringLiteral("codab"));
       }
 
 //---------------------------------------------------------

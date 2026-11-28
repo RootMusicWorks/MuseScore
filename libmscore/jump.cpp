@@ -102,7 +102,10 @@ QString Jump::jumpTypeUserName() const
 void Jump::layout()
       {
       TextBase::layout();
-      autoplaceMeasureElement();
+      if (_dynamicRepeatPlacement && !autoplace())
+            setOffsetChanged(false);
+      else
+            autoplaceMeasureElement();
       }
 
 //---------------------------------------------------------
@@ -121,6 +124,8 @@ void Jump::read(XmlReader& e)
                   _continueAt = e.readElementText();
             else if (tag == "playRepeats")
                   _playRepeats = e.readBool();
+            else if (tag == "dynamicRepeatPlacement")
+                  _dynamicRepeatPlacement = e.readBool();
             else if (!TextBase::readProperties(e))
                   e.unknown();
             }
@@ -138,6 +143,8 @@ void Jump::write(XmlWriter& xml) const
       xml.tag("playUntil", _playUntil);
       xml.tag("continueAt", _continueAt);
       writeProperty(xml, Pid::PLAY_REPEATS);
+      if (_dynamicRepeatPlacement)
+            xml.tag("dynamicRepeatPlacement", true);
       xml.etag();
       }
 
@@ -225,6 +232,10 @@ bool Jump::setProperty(Pid propertyId, const QVariant& v)
 QVariant Jump::propertyDefault(Pid propertyId) const
       {
       switch (propertyId) {
+            case Pid::OFFSET:
+                  if (_dynamicRepeatPlacement)
+                        return QPointF();
+                  break;
             case Pid::JUMP_TO:
             case Pid::PLAY_UNTIL:
             case Pid::CONTINUE_AT:

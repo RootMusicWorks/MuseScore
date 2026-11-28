@@ -181,7 +181,10 @@ void Marker::layout()
       if (layoutToParentWidth() && !(align() & (Align::RIGHT | Align::HCENTER)))
             rxpos() -= width() * 0.5;
 
-      autoplaceMeasureElement();
+      if (_dynamicRepeatPlacement && !autoplace())
+            setOffsetChanged(false);
+      else
+            autoplaceMeasureElement();
       }
 
 //---------------------------------------------------------
@@ -199,6 +202,8 @@ void Marker::read(XmlReader& e)
                   setLabel(s);
                   mt = markerType(s);
                   }
+            else if (tag == "dynamicRepeatPlacement")
+                  _dynamicRepeatPlacement = e.readBool();
             else if (!TextBase::readProperties(e))
                   e.unknown();
             }
@@ -214,6 +219,8 @@ void Marker::write(XmlWriter& xml) const
       xml.stag(this);
       TextBase::writeProperties(xml);
       xml.tag("label", _label);
+      if (_dynamicRepeatPlacement)
+            xml.tag("dynamicRepeatPlacement", true);
       xml.etag();
       }
 
@@ -281,6 +288,10 @@ bool Marker::setProperty(Pid propertyId, const QVariant& v)
 QVariant Marker::propertyDefault(Pid propertyId) const
       {
       switch (propertyId) {
+            case Pid::OFFSET:
+                  if (_dynamicRepeatPlacement)
+                        return QPointF();
+                  break;
             case Pid::LABEL:
                   return QString();
             case Pid::MARKER_TYPE:

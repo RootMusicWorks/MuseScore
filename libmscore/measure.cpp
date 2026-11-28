@@ -37,10 +37,12 @@
 #include "hairpin.h"
 #include "hook.h"
 #include "icon.h"
+#include "jump.h"
 #include "key.h"
 #include "keysig.h"
 #include "layout.h"
 #include "layoutbreak.h"
+#include "marker.h"
 #include "measure.h"
 #include "measurenumber.h"
 #include "mmrestrange.h"
@@ -77,6 +79,8 @@
 #include "utils.h"
 #include "volta.h"
 #include "xml.h"
+
+#include <algorithm>
 
 namespace Ms {
 
@@ -647,6 +651,150 @@ void Measure::layoutMMRestRange()
             }
       }
 
+// Returns zero for legacy elements, including repeat signs read from older scores.
+static int dynamicRepeatSide(const Element* element)
+      {
+      if (element->isJump()) {
+            const Jump* jump = toJump(element);
+            if (jump->dynamicRepeatPlacement()
+                && (jump->jumpType() == Jump::Type::DC || jump->jumpType() == Jump::Type::DS))
+                  return 1;
+            }
+      else if (element->isMarker()) {
+            const Marker* marker = toMarker(element);
+            if (marker->dynamicRepeatPlacement()) {
+                  switch (marker->markerType()) {
+                        case Marker::Type::SEGNO:
+                        case Marker::Type::CODA:
+                              return -1;
+                        case Marker::Type::TOCODA:
+                              if (!marker->xmlText().contains(QStringLiteral("<sym>")))
+                                    return 1;
+                              break;
+                        default:
+                              break;
+                        }
+                  }
+            }
+      return 0;
+      }
+
+static void layoutDynamicRepeatSigns(Measure* measure)
+      {
+      if (std::none_of(measure->el().begin(), measure->el().end(), [](const Element* element) {
+            return dynamicRepeatSide(element) != 0;
+            }))
+            return;
+
+      Score* score = measure->score();
+      const MeasureBase* previous = measure->prev();
+      const bool precedingFrame = score->showVBox() && previous && previous->isHBox()
+                                 && previous->system() == measure->system();
+      const RehearsalMark* frameMark = nullptr;
+      QList<QRectF> occupied;
+      for (Segment* segment = measure->first(); segment; segment = segment->next()) {
+            if (!segment->enabled())
+                  continue;
+            for (Element* element : segment->annotations()) {
+                  if (!element->visible())
+                        continue;
+                  if (element->isRehearsalMark()) {
+                        const RehearsalMark* mark = toRehearsalMark(element);
+                        occupied.append(mark->frameBounds().translated(mark->pagePos()));
+                        if (!frameMark && precedingFrame && segment->rtick().isZero() && mark->usesAutomaticFrame())
+                              frameMark = mark;
+                        }
+                  else if (element->isTextBase() || element->isFretDiagram())
+                        occupied.append(element->bbox().translated(element->pagePos()));
+                  }
+            }
+      for (Element* element : measure->el()) {
+            if (element->visible() && (element->isMarker() || element->isJump())
+                && !dynamicRepeatSide(element))
+                  occupied.append(element->bbox().translated(element->pagePos()));
+            }
+
+      const Staff* anchorStaff = frameMark ? frameMark->frameTabStaff() : nullptr;
+      if (!anchorStaff) {
+            for (int i = 0; i < score->nstaves(); ++i) {
+                  const Staff* staff = score->staff(i);
+                  if (!measure->visible(i) || staff->invisible(measure->tick()))
+                        continue;
+                  if (!anchorStaff)
+                        anchorStaff = staff;
+                  if (staff->isTabStaff(measure->tick())) {
+                        anchorStaff = staff;
+                        break;
+                        }
+                  }
+            }
+      if (!anchorStaff)
+            return;
+
+      StaffLines* lines = measure->staffLines(anchorStaff->idx());
+      const auto& staffLines = lines->getLines();
+      if (staffLines.isEmpty())
+            return;
+      const qreal lineY = lines->pagePos().y();
+      const qreal top = lineY + staffLines.front().y1();
+      const qreal bottom = lineY + staffLines.back().y1();
+      const qreal gap = anchorStaff->spatium(measure->tick()) * anchorStaff->lineDistance(measure->tick());
+      const qreal left = measure->pagePos().x();
+      const qreal right = left + measure->width();
+      qreal leftAnchor = left;
+      if (measure->isFirstInSystem() || measure->repeatStart()) {
+            const Segment* firstChordRest = measure->first(SegmentType::ChordRest);
+            if (firstChordRest)
+                  leftAnchor += firstChordRest->x();
+            }
+
+      for (Element* element : measure->el()) {
+            const int side = dynamicRepeatSide(element);
+            if (!side || !element->visible())
+                  continue;
+            const QRectF bounds = element->bbox();
+            if (bounds.isEmpty())
+                  continue;
+            QRectF placed = bounds;
+            if (side > 0) {
+                  placed.moveRight(right);
+                  placed.moveTop(bottom + gap);
+                  }
+            else if (frameMark) {
+                  const QRectF frame = frameMark->frameBounds().translated(frameMark->pagePos());
+                  placed.moveCenter(QPointF(frame.center().x(), placed.center().y()));
+                  placed.moveBottom(frame.top() - gap);
+                  }
+            else {
+                  placed.moveLeft(leftAnchor);
+                  placed.moveBottom(top - gap);
+                  }
+
+            // Move the default position away from the staff if an existing
+            // annotation intersects it. Hand offsets are applied separately.
+            bool moved;
+            do {
+                  moved = false;
+                  for (const QRectF& obstacle : qAsConst(occupied)) {
+                        if (!placed.intersects(obstacle.adjusted(0.0, -gap, 0.0, gap)))
+                              continue;
+                        if (side > 0 && placed.top() < obstacle.bottom() + gap) {
+                              placed.moveTop(obstacle.bottom() + gap);
+                              moved = true;
+                              }
+                        else if (side < 0 && placed.bottom() > obstacle.top() - gap) {
+                              placed.moveBottom(obstacle.top() - gap);
+                              moved = true;
+                              }
+                        }
+                  } while (moved);
+
+            const QPointF origin = element->pagePos() - element->pos();
+            element->setPos(placed.topLeft() - bounds.topLeft() - origin);
+            occupied.append(placed.translated(element->offset()));
+            }
+      }
+
 //---------------------------------------------------------
 //   layout2
 //    called after layout of page
@@ -689,6 +837,8 @@ void Measure::layout2()
                         }
                   }
             }
+
+      layoutDynamicRepeatSigns(this);
 
       //---------------------------------------------------
       //    layout ties

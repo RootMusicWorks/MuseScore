@@ -41,6 +41,7 @@ class Marker final : public TextBase {
    private:
       Type _markerType;
       QString _label;               ///< referenced from Jump() element
+      bool _dynamicRepeatPlacement { false };
 
    public:
       Marker(Score*);
@@ -58,6 +59,8 @@ class Marker final : public TextBase {
       Measure* measure() const         { return (Measure*)parent(); }
 
       void layout() override;
+      bool dynamicRepeatPlacement() const { return _dynamicRepeatPlacement; }
+      void setDynamicRepeatPlacement(bool value) { _dynamicRepeatPlacement = value; }
       void read(XmlReader&) override;
       void write(XmlWriter& xml) const override;
 

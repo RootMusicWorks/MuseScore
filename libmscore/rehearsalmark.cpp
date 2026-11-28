@@ -192,9 +192,27 @@ void RehearsalMark::layoutFrameOnTabStaff()
       if (!previous || !previous->isHBox() || previous->system() != measure->system())
             return;
 
-      Staff* target = score()->masterScore()->staff(_frameTabStaff);
+      Staff* target = frameTabStaff();
       if (!target)
             return;
+
+      StaffLines* lines = measure->staffLines(target->idx());
+      const auto& staffLines = lines->getLines();
+      if (staffLines.isEmpty())
+            return;
+      const qreal staffCenter = lines->pagePos().y() + (staffLines.first().y1() + staffLines.last().y1()) * 0.5;
+      rypos() = staffCenter - s->pagePos().y() - frameBounds().center().y();
+      }
+
+Staff* RehearsalMark::frameTabStaff() const
+      {
+      Segment* s = segment();
+      if (!s || _frameTabStaff < 0)
+            return nullptr;
+      Measure* measure = s->measure();
+      Staff* target = score()->masterScore()->staff(_frameTabStaff);
+      if (!target)
+            return nullptr;
       if (!score()->isMaster()) {
             Staff* partStaff = nullptr;
             for (Staff* linked : target->staffList()) {
@@ -206,14 +224,9 @@ void RehearsalMark::layoutFrameOnTabStaff()
             target = partStaff;
             }
       if (!target || !target->isTabStaff(s->tick()) || target->invisible(s->tick()) || !measure->visible(target->idx()))
-            return;
+            return nullptr;
 
-      StaffLines* lines = measure->staffLines(target->idx());
-      const auto& staffLines = lines->getLines();
-      if (staffLines.isEmpty())
-            return;
-      const qreal staffCenter = lines->pagePos().y() + (staffLines.first().y1() + staffLines.last().y1()) * 0.5;
-      rypos() = staffCenter - s->pagePos().y() - frameBounds().center().y();
+      return target;
       }
 
 //---------------------------------------------------------

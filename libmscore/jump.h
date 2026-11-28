@@ -33,6 +33,7 @@ class Jump final : public TextBase {
       QString _playUntil;
       QString _continueAt;
       bool _playRepeats;
+      bool _dynamicRepeatPlacement { false };
 
    public:
       enum class Type : char {
@@ -61,6 +62,8 @@ class Jump final : public TextBase {
       void write(XmlWriter& xml) const override;
 
       void layout() override;
+      bool dynamicRepeatPlacement() const { return _dynamicRepeatPlacement; }
+      void setDynamicRepeatPlacement(bool value) { _dynamicRepeatPlacement = value; }
 
       QString jumpTo() const                    { return _jumpTo;     }
       QString playUntil() const                 { return _playUntil;  }

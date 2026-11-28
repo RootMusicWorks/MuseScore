@@ -544,6 +544,13 @@ void Palette::setRepeatInsertionDefaults(Element* element)
       if (fontSize == 0.0)
             return;
 
+      if (element->isJump())
+            toJump(element)->setDynamicRepeatPlacement(true);
+      else
+            toMarker(element)->setDynamicRepeatPlacement(true);
+      element->setOffset(QPointF());
+      element->setPropertyFlags(Pid::OFFSET, PropertyFlags::UNSTYLED);
+
       element->setProperty(Pid::FONT_SIZE, fontSize);
       element->setPropertyFlags(Pid::FONT_SIZE, PropertyFlags::UNSTYLED);
       element->setAutoplace(false);
