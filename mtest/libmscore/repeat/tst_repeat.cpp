@@ -163,6 +163,7 @@ void TestRepeat::dynamicRepeatPlacement()
       std::unique_ptr<Element> restored(writeReadElement(jump));
       QVERIFY(restored && restored->isJump());
       QVERIFY(toJump(restored.get())->dynamicRepeatPlacement());
+      QVERIFY(toJump(restored.get())->adjustedRepeatPlacement());
       QCOMPARE(toJump(restored.get())->jumpTo(), QStringLiteral("segno"));
       const qreal unit = jump->offsetIsSpatiumDependent() ? jump->score()->spatium() : 1.0;
       const qreal restoredUnit = restored->offsetIsSpatiumDependent() ? restored->score()->spatium() : 1.0;
@@ -175,6 +176,7 @@ void TestRepeat::dynamicRepeatPlacement()
       std::unique_ptr<Element> restoredMarker(writeReadElement(&marker));
       QVERIFY(restoredMarker && restoredMarker->isMarker());
       QVERIFY(toMarker(restoredMarker.get())->dynamicRepeatPlacement());
+      QVERIFY(toMarker(restoredMarker.get())->adjustedRepeatPlacement());
       QCOMPARE(toMarker(restoredMarker.get())->label(), QStringLiteral("codab"));
       }
 

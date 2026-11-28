@@ -738,7 +738,9 @@ static void layoutDynamicRepeatSigns(Measure* measure)
       const qreal lineY = lines->pagePos().y();
       const qreal top = lineY + staffLines.front().y1();
       const qreal bottom = lineY + staffLines.back().y1();
-      const qreal gap = anchorStaff->spatium(measure->tick()) * anchorStaff->lineDistance(measure->tick());
+      const qreal staffSpace = anchorStaff->spatium(measure->tick());
+      const qreal gap = staffSpace * anchorStaff->lineDistance(measure->tick());
+      const qreal bottomStroke = score->styleS(Sid::staffLineWidth).val() * lines->spatium() * 0.5;
       const qreal left = measure->pagePos().x();
       const qreal right = left + measure->width();
       qreal leftAnchor = left;
@@ -755,10 +757,12 @@ static void layoutDynamicRepeatSigns(Measure* measure)
             const QRectF bounds = element->bbox();
             if (bounds.isEmpty())
                   continue;
+            const bool adjusted = element->isJump() ? toJump(element)->adjustedRepeatPlacement()
+                                                     : toMarker(element)->adjustedRepeatPlacement();
             QRectF placed = bounds;
             if (side > 0) {
                   placed.moveRight(right);
-                  placed.moveTop(bottom + gap);
+                  placed.moveTop(bottom + (adjusted ? bottomStroke + staffSpace : gap));
                   }
             else if (frameMark) {
                   const QRectF frame = frameMark->frameBounds().translated(frameMark->pagePos());
@@ -788,6 +792,10 @@ static void layoutDynamicRepeatSigns(Measure* measure)
                               }
                         }
                   } while (moved);
+
+            // Keep the established vertical position when shifting the symbols.
+            if (adjusted && side < 0)
+                  placed.translate(-1.5 * staffSpace, 0.0);
 
             const QPointF origin = element->pagePos() - element->pos();
             element->setPos(placed.topLeft() - bounds.topLeft() - origin);
