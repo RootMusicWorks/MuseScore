@@ -177,6 +177,7 @@ void TestRepeat::dynamicRepeatPlacement()
       QVERIFY(restoredMarker && restoredMarker->isMarker());
       QVERIFY(toMarker(restoredMarker.get())->dynamicRepeatPlacement());
       QVERIFY(toMarker(restoredMarker.get())->adjustedRepeatPlacement());
+      QVERIFY(toMarker(restoredMarker.get())->centeredRepeatFramePlacement());
       QCOMPARE(toMarker(restoredMarker.get())->label(), QStringLiteral("codab"));
       }
 

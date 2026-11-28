@@ -41,7 +41,7 @@ class Marker final : public TextBase {
    private:
       Type _markerType;
       QString _label;               ///< referenced from Jump() element
-      int _dynamicRepeatPlacement { 0 }; // 0: standard, 1: original dynamic, 2: adjusted dynamic
+      int _dynamicRepeatPlacement { 0 }; // 0: standard, 1: original dynamic, 2: adjusted, 3: centered over the rehearsal frame
 
    public:
       Marker(Score*);
@@ -61,7 +61,11 @@ class Marker final : public TextBase {
       void layout() override;
       bool dynamicRepeatPlacement() const { return _dynamicRepeatPlacement > 0; }
       bool adjustedRepeatPlacement() const { return _dynamicRepeatPlacement >= 2; }
-      void setDynamicRepeatPlacement(bool value) { _dynamicRepeatPlacement = value ? 2 : 0; }
+      bool centeredRepeatFramePlacement() const { return _dynamicRepeatPlacement >= 3; }
+      void setDynamicRepeatPlacement(bool value)
+            {
+            _dynamicRepeatPlacement = value ? (_markerType == Type::SEGNO || _markerType == Type::CODA ? 3 : 2) : 0;
+            }
       void read(XmlReader&) override;
       void write(XmlWriter& xml) const override;
 

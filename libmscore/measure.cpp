@@ -759,6 +759,7 @@ static void layoutDynamicRepeatSigns(Measure* measure)
                   continue;
             const bool adjusted = element->isJump() ? toJump(element)->adjustedRepeatPlacement()
                                                      : toMarker(element)->adjustedRepeatPlacement();
+            const bool centeredOnFrame = side < 0 && frameMark && toMarker(element)->centeredRepeatFramePlacement();
             QRectF placed = bounds;
             if (side > 0) {
                   placed.moveRight(right);
@@ -767,7 +768,7 @@ static void layoutDynamicRepeatSigns(Measure* measure)
             else if (frameMark) {
                   const QRectF frame = frameMark->frameBounds().translated(frameMark->pagePos());
                   placed.moveCenter(QPointF(frame.center().x(), placed.center().y()));
-                  placed.moveBottom(frame.top() - gap);
+                  placed.moveBottom(frame.top() - gap - (centeredOnFrame ? staffSpace : 0.0));
                   }
             else {
                   placed.moveLeft(leftAnchor);
@@ -794,7 +795,7 @@ static void layoutDynamicRepeatSigns(Measure* measure)
                   } while (moved);
 
             // Keep the established vertical position when shifting the symbols.
-            if (adjusted && side < 0)
+            if (adjusted && side < 0 && !centeredOnFrame)
                   placed.translate(-1.5 * staffSpace, 0.0);
 
             const QPointF origin = element->pagePos() - element->pos();
