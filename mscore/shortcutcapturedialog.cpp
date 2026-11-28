@@ -113,18 +113,21 @@ void ShortcutCaptureDialog::keyPress(QKeyEvent* e)
             return;
 
       k |= e->modifiers();
-      // remove shift-modifier for non-letter keys, except a few keys
-      if ((k & Qt::ShiftModifier) && !isShiftAllowed(e->key(), e->text())) {
-            qDebug() << k;
-            k &= ~Qt::ShiftModifier;
-            qDebug() << k;
-            }
+#ifdef Q_OS_MAC
+      // Cocoa reports the letter key separately from the typed text.
+      // Option can produce a symbol, and Command can leave text empty.
+      const bool useTextHeuristics = e->key() < Qt::Key_A || e->key() > Qt::Key_Z;
+#else
+      const bool useTextHeuristics = true;
+#endif
+      if (useTextHeuristics) {
+            // Remove Shift for keys whose shifted character already identifies them.
+            if ((k & Qt::ShiftModifier) && !isShiftAllowed(e->key(), e->text()))
+                  k &= ~Qt::ShiftModifier;
 
-      // remove Ctrl+Alt modifiers from a few keys
-      if ((k & (Qt::ControlModifier | Qt::AltModifier)) && !isCtrlAltNeeded(e->key(), e->text())) { // Qt::KeyAltGr, right Alt
-            qDebug() << k;
-            k &= ~(Qt::ControlModifier | Qt::AltModifier);
-            qDebug() << k;
+            // Keep the existing normalization for characters produced with AltGr.
+            if ((k & (Qt::ControlModifier | Qt::AltModifier)) && !isCtrlAltNeeded(e->key(), e->text()))
+                  k &= ~(Qt::ControlModifier | Qt::AltModifier);
             }
 
       switch(key.count()) {
